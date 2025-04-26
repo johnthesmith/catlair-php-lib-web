@@ -1,7 +1,7 @@
 # web
 
-1. Модуль работы с веб сервером.
-
+1. Библиотеки вебсервера.
+2. Fork https://gitlab.com/catlair/pusa/-/tree/main/php/web
 
 # Схема
 
