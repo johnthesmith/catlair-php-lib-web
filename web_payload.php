@@ -20,13 +20,14 @@
 namespace catlair;
 
 
+
 /*
     Ползеная нагрузка веб движка.
     Основа для пользовательских контроллеров.
-    Форк Pusa-Catlair.
 
-
-    https://gitlab.com/catlair/pusa/-/tree/main
+    Репозитории:
+        Форк Pusa-Catlair https://github.com/johnthesmith/catlair-php-lib-web
+        Пуса https://gitlab.com/catlair/pusa/-/tree/main
 */
 
 require_once LIB . '/app/payload.php';

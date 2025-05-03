@@ -23,6 +23,8 @@ namespace catlair;
     Движек Web сервера. Форк Pusa.
     https://gitlab.com/catlair/pusa/-/tree/main
     Наследуется от Engine. Расширяет приложение функционалом вебсервера.
+
+    https://github.com/johnthesmith/catlair-php-lib-web
 */
 
 

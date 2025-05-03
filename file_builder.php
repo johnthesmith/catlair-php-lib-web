@@ -18,6 +18,9 @@
 /*
     Сборщик файлов
     Расширяет функционал получения файла
+
+    https://github.com/johnthesmith/catlair-php-lib-web
+
     2022-07-07
 */
 

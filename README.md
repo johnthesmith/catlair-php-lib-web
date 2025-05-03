@@ -3,6 +3,10 @@
 1. Библиотеки вебсервера.
 2. Fork https://gitlab.com/catlair/pusa/-/tree/main/php/web
 
+# Репозиторий
+
+1. https://github.com/johnthesmith/catlair-php-lib-web
+
 # Схема
 
 ```mermaid

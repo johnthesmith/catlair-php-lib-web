@@ -24,6 +24,8 @@ namespace catlair;
 /*
     Session class.
     Contain all information about current session
+
+    https://github.com/johnthesmith/catlair-php-lib-web
 */
 
 

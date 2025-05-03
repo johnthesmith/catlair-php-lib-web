@@ -22,12 +22,15 @@ namespace catlair;
 
 
 /*
+
     Class for compiling content with embeded XML constructions:
     <cl param="command" param="value" ... />
     or
     <cl param="command" param="value" ... >
     <command param="value"/>
     </cl>
+
+    https://github.com/johnthesmith/catlair-php-lib-web
 
     still@itserv.ru
 */
