@@ -32,11 +32,17 @@ namespace catlair;
 
 
 
+/* Load web application library */
 require_once LIB . '/web/web.php';
+
+/* Load hub payload */
 require_once LIB . '/app/hub.php';
 
 
 
+/*
+    Web payload class declaration
+*/
 class WebPayload extends Hub
 {
     /* Payload content, initially empty */
@@ -55,28 +61,36 @@ class WebPayload extends Hub
     */
 
 
-//    /*
-//        Мутация полезной нагрузки
-//    */
-//    public function mutate
-//    (
-//        string $AClassName,         /* Имя класса в который необходимо мутировать */
-//        string $ALibrary = null     /* Не обязательная библиотека для загрузки */
-//    )
-//    {
-//        $result = parent::mutate( $AClassName, $ALibrary );
-//        /* Перенос контента */
-//        if( method_exists( $result, 'setContent' ))
-//        {
-//            $result -> setContent( $this -> getContent() );
-//        }
-//        /* Перенос типа контента */
-//        if( method_exists( $result, 'setContentType' ))
-//        {
-//            $result -> setContentType( $this -> getContentType() );
-//        }
-//        return $result;
-//    }
+    /*
+        Мутация полезной нагрузки
+    */
+    public function mutate
+    (
+        /* Имя класса в который необходимо мутировать */
+        string $aPayloadName
+    )
+    {
+        $result = parent::mutate( $aPayloadName );
+
+        /* Перенос контента */
+        if( method_exists( $result, 'setContent' ))
+        {
+            $result -> setContent( $this -> getContent() );
+        }
+
+        /* Перенос типа контента */
+        if( method_exists( $result, 'setContentType' ))
+        {
+            $result -> setContentType( $this -> getContentType() );
+        }
+
+        /* Перенос типа контента */
+        if( method_exists( $result, 'setContentFileName' ))
+        {
+            $result -> setContentFileName( $this -> getContentFileName() );
+        }
+        return $result;
+    }
 
 
 
@@ -269,7 +283,7 @@ class WebPayload extends Hub
 
 
     /*
-        Возвращается текущий контент
+        Return current content
     */
     public function getContent()
     {
@@ -279,7 +293,7 @@ class WebPayload extends Hub
 
 
     /*
-        Установка конетнта
+        Set content
     */
     public function setContent
     (

@@ -153,12 +153,12 @@ class Web extends Engine
             case $this -> staticKey:
                 /* Static file return mode */
                 $method = 'static';
-                $payload = 'web';
+                $payload = 'api';
             break;
             case $this -> dynamicKey:
                 /* Dynamicc file return mode */
                 $method = 'dynamic';
-                $payload = 'web';
+                $payload = 'api';
             break;
         }
 
