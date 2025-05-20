@@ -30,119 +30,241 @@ namespace catlair;
         Пуса https://gitlab.com/catlair/pusa/-/tree/main
 */
 
-require_once LIB . '/app/payload.php';
+
+
+require_once LIB . '/web/web.php';
+require_once LIB . '/app/hub.php';
 
 
 
-class WebPayload extends Payload
+class WebPayload extends Hub
 {
-    /* Тип контента полезной нагрузки */
-    private $ContentType = null; // 'application/json';
-    /* Контент полезной нагрузки, при старте пуст */
-    private $Content = '';
+    /* Payload content, initially empty */
+    private $content = '';
 
-    /*
-        Создание модуля полезной нагрузки
-        Возвращается объект полезной нагрузки
+    /* Content type of the payload */
+    private $contentType = Web::HTML;
+
+    /* Filename of the returned content */
+    private $contentFileName = '';
+
+
+
+    /**************************************************************************
+        Utils
     */
-    static public function create
-    (
-        App $AApp,                  /* Приложение */
-        string $AClassName  = null, /* Имя класса полезной нагрузки*/
-        string $ALibrary    = null  /* Имя библиотеки полезной нагрузки */
-    )
-    {
-        return Payload::create( $AApp, $AClassName, $ALibrary );
-    }
+
+
+//    /*
+//        Мутация полезной нагрузки
+//    */
+//    public function mutate
+//    (
+//        string $AClassName,         /* Имя класса в который необходимо мутировать */
+//        string $ALibrary = null     /* Не обязательная библиотека для загрузки */
+//    )
+//    {
+//        $result = parent::mutate( $AClassName, $ALibrary );
+//        /* Перенос контента */
+//        if( method_exists( $result, 'setContent' ))
+//        {
+//            $result -> setContent( $this -> getContent() );
+//        }
+//        /* Перенос типа контента */
+//        if( method_exists( $result, 'setContentType' ))
+//        {
+//            $result -> setContentType( $this -> getContentType() );
+//        }
+//        return $result;
+//    }
 
 
 
-    /*
-        Возвращается список
+//    /*
+//        Возвращает родителя мутанта
+//    */
+//    public function unmutate()
+//    {
+//        /* Перенос контента */
+//        if( method_exists( $this -> getParent(), 'setContent' ))
+//        {
+//            $this -> getParent() -> setContent( $this -> getContent() );
+//        }
+//        /* Перенос типа контента */
+//        if( method_exists( $this -> getParent(), 'setContentType' ))
+//        {
+//            $this -> getParent() -> setContentType
+//            (
+//                 $this -> getContentType()
+//            );
+//        }
+//        /* Выполненеи родительского метода анмутации */
+//        return parent::unmutate();
+//    }
+
+
+
+//    /*
+//        Возвращает шаблон по идентификатору для сайта и языка
+//    */
+//    public function getTemplate
+//    (
+//        /* Идентификатор шаблона */
+//        string $AID         = null,
+//        /* Необязательный идентификатор сайта */
+//        string $AIDSite     = Web::SITE_CURRENT,
+//        /* Необязательный идентификатор языка */
+//        string $AIDLanguage = null
+//    )
+//    {
+//        return $this
+//        -> getApp()
+//        -> getTemplate( $AID, $AIDSite, $AIDLanguage );
+//    }
+
+
+
+//    /*
+//        Запуск метода удаленной полезной нагрузки через REST
+//        c использованием прямой ссылки и таймаута исполднения запроса
+//    */
+//    public function summonOnHost
+//    (
+//        /* Имя вызываемой полезной нагрузки */
+//        string  $APayloadName,
+//        /* Имя метода */
+//        string  $APayloadMethod,
+//        /* Дополнительные аргументы */
+//        array   $AArguments,
+//        /* Имя конфигураци с настройками */
+//        string  $AURL,
+//        /* Имя конфигураци с настройками */
+//        string  $ARequestTimeoutMls,
+//        /* Тип исполнтеля dispatcher или preceptor */
+//        string $AType = 'dispatcher'
+//    )
+//    {
+//        /* Формирование ссылки */
+//        $callUrl = URL::Create()
+//        -> parse( $AURL )
+//        -> setPath([ 'api', $AType, 'exec' ])
+//        -> clearParams()
+//        ;
+//
+//        /* Исполнение запроса */
+//        $bot = WebBot::create( $this -> getLog() )
+//        -> setRequestTimeoutMls( $ARequestTimeoutMls )
+//        -> setUrl( $callUrl )
+//        -> setPostParam( 'payloadName'      , $APayloadName )
+//        -> setPostParam( 'payloadMethod'    , $APayloadMethod )
+//        -> setPostParam( 'payloadArguments' , $AArguments )
+//        -> execute()
+//        -> resultTo( $this )
+//        ;
+//
+//        /*
+//            Получние результата из текста ответа при положительном
+//            состоянии после бота
+//        */
+//        $answer = null;
+//        if( $this -> isOk() )
+//        {
+//            /* Анализ ответа */
+//            if( $bot -> getContentType() == 'application/json' )
+//            {
+//                $answer = json_decode( $bot -> getAnswer(), true );
+//                if( is_array( $answer ))
+//                {
+//                    /* Установка текущего состояния из ответа */
+//                    $this -> setResultFromArray( $answer );
+//                }
+//            }
+//            else
+//            {
+//                $answer = $bot -> getAnswer();
+//            }
+//        }
+//
+//        /* Возврат результата */
+//        $this -> setContentType( $bot -> getContentType());
+//        if
+//        (
+//            $this -> getContentType() == 'application/json' &&
+//            is_array( $answer )
+//        )
+//        {
+//            /* Возврат структурированного результата */
+//            $this
+//            -> getApp()
+//            -> getOutcomeList()
+//            -> setParams( clValueFromObject( $answer, 'Outcome' ));
+//        }
+//        else
+//        {
+//            /* Возврат контента */
+//            $this -> setContent( $answer );
+//        }
+//
+//        return $this;
+//    }
+
+
+
+//    /*
+//        Запуск метода удаленной полезной нагрузки через REST протокол
+//        c использованием конфигуратора
+//    */
+//    public function summon
+//    (
+//        /* Имя вызываемой полезной нагрузки */
+//        string  $APayloadName,
+//        /* Имя метода */
+//        string  $APayloadMethod,
+//        /* Дополнительные аргументы */
+//        array   $AArguments = [],
+//        /* Имя конфигураци с настройками */
+//        string  $AConfig    = 'default'
+//    )
+//    {
+//        /* Получение конфигурации удаленного сервера */
+//        $config =
+//        $this
+//        -> getApp()
+//        -> getParam([ 'web', 'remotePayloads', $AConfig ]);
+//
+//        if( empty( $config ))
+//        {
+//            $this -> setResult
+//            (
+//                'PayloadRemoteConfigIsEmpty',
+//                [
+//                    'congfig'   => $AConfig,
+//                    'payload'   => $APayloadName,
+//                    'method'    => $APayloadMethod
+//                ]
+//            );
+//        }
+//        else
+//        {
+//            $this -> summonOnHost
+//            (
+//                $APayloadName,
+//                $APayloadMethod,
+//                $AArguments,
+//                clValueFromObject( $config, 'url', '127.0.0.1' ),
+//                clValueFromObject( $config, 'requestTimeoutMls', 1000 ),
+//                clValueFromObject( $config, 'type', 'dispatcher' )
+//            );
+//        }
+//
+//        return $this;
+//    }
+
+
+
+    /**************************************************************************
+        Setters and getters
     */
-    public function getOutcomeList()
-    {
-        return $this -> getApp() -> getOutcomeList();
-    }
-
-
-
-    /*
-        Мутация полезной нагрузки
-    */
-    public function mutate
-    (
-        string $AClassName,         /* Имя класса в который необходимо мутировать */
-        string $ALibrary = null     /* Не обязательная библиотека для загрузки */
-    )
-    {
-        $result = parent::mutate( $AClassName, $ALibrary );
-        /* Перенос контента */
-        if( method_exists( $result, 'setContent' ))
-        {
-            $result -> setContent( $this -> getContent() );
-        }
-        /* Перенос типа контента */
-        if( method_exists( $result, 'setContentType' ))
-        {
-            $result -> setContentType( $this -> getContentType() );
-        }
-        return $result;
-    }
-
-
-
-    /*
-        Возвращает родителя мутанта
-    */
-    public function unmutate()
-    {
-        /* Перенос контента */
-        if( method_exists( $this -> getParent(), 'setContent' ))
-        {
-            $this -> getParent() -> setContent( $this -> getContent() );
-        }
-        /* Перенос типа контента */
-        if( method_exists( $this -> getParent(), 'setContentType' ))
-        {
-            $this -> getParent() -> setContentType
-            (
-                 $this -> getContentType()
-            );
-        }
-        /* Выполненеи родительского метода анмутации */
-        return parent::unmutate();
-    }
-
-
-
-    /*
-        Установка возвращаемых значений
-        Используется метод приложения setOutcome
-    */
-    public function setOutcome
-    (
-        $AName,         /* Имя ключа или массив строк с путем ключа */
-        $AValue = null
-    )
-    {
-        $this -> getApp() -> setOutcome( $AName, $AValue );
-        return $this;
-    }
-
-
-
-    /*
-        Получение возвращаемых значений
-    */
-    public function getOutcome
-    (
-        string $AName,
-        $ADefault = null
-    )
-    {
-        return $this -> getApp() -> getOutcome( $AName, $ADefault );
-    }
 
 
 
@@ -151,7 +273,7 @@ class WebPayload extends Payload
     */
     public function getContent()
     {
-        return $this -> Content;
+        return $this -> content;
     }
 
 
@@ -161,14 +283,11 @@ class WebPayload extends Payload
     */
     public function setContent
     (
-        $AValue = null     /* Устанавливаемый конент */
+        /* Устанавливаемый конент */
+        $a = null
     )
     {
-        switch( gettype( $AValue ))
-        {
-            case 'string': $this -> Content = $AValue; break;
-            default: $this -> Content = json_encode( $AValue ); break;
-        }
+        $this -> content = $a;
         return $this;
     }
 
@@ -179,7 +298,7 @@ class WebPayload extends Payload
     */
     public function getContentType()
     {
-        return $this -> ContentType;
+        return $this -> contentType;
     }
 
 
@@ -189,170 +308,36 @@ class WebPayload extends Payload
     */
     public function setContentType
     (
-        string $AValue = null     /* Устанавливаемый тип конента */
+        /* Устанавливаемый тип конента */
+        string $a = null
     )
     {
-        $this -> ContentType = $AValue;
-        return $this;
-    }
-
-
-
-
-
-    /*
-        Возвращает шаблон по идентификатору для сайта и языка
-    */
-    public function getTemplate
-    (
-        /* Идентификатор шаблона */
-        string $AID         = null,
-        /* Необязательный идентификатор сайта */
-        string $AIDSite     = Web::SITE_CURRENT,
-        /* Необязательный идентификатор языка */
-        string $AIDLanguage = null
-    )
-    {
-        return $this
-        -> getApp()
-        -> getTemplate( $AID, $AIDSite, $AIDLanguage );
-    }
-
-
-
-    /*
-        Запуск метода удаленной полезной нагрузки через REST
-        c использованием прямой ссылки и таймаута исполднения запроса
-    */
-    public function summonOnHost
-    (
-        /* Имя вызываемой полезной нагрузки */
-        string  $APayloadName,
-        /* Имя метода */
-        string  $APayloadMethod,
-        /* Дополнительные аргументы */
-        array   $AArguments,
-        /* Имя конфигураци с настройками */
-        string  $AURL,
-        /* Имя конфигураци с настройками */
-        string  $ARequestTimeoutMls,
-        /* Тип исполнтеля dispatcher или preceptor */
-        string $AType = 'dispatcher'
-    )
-    {
-        /* Формирование ссылки */
-        $callUrl = URL::Create()
-        -> parse( $AURL )
-        -> setPath([ 'api', $AType, 'exec' ])
-        -> clearParams()
-        ;
-
-        /* Исполнение запроса */
-        $bot = WebBot::create( $this -> getLog() )
-        -> setRequestTimeoutMls( $ARequestTimeoutMls )
-        -> setUrl( $callUrl )
-        -> setPostParam( 'payloadName'      , $APayloadName )
-        -> setPostParam( 'payloadMethod'    , $APayloadMethod )
-        -> setPostParam( 'payloadArguments' , $AArguments )
-        -> execute()
-        -> resultTo( $this )
-        ;
-
-        /*
-            Получние результата из текста ответа при положительном
-            состоянии после бота
-        */
-        $answer = null;
-        if( $this -> isOk() )
-        {
-            /* Анализ ответа */
-            if( $bot -> getContentType() == 'application/json' )
-            {
-                $answer = json_decode( $bot -> getAnswer(), true );
-                if( is_array( $answer ))
-                {
-                    /* Установка текущего состояния из ответа */
-                    $this -> setResultFromArray( $answer );
-                }
-            }
-            else
-            {
-                $answer = $bot -> getAnswer();
-            }
-        }
-
-        /* Возврат результата */
-        $this -> setContentType( $bot -> getContentType());
-        if
-        (
-            $this -> getContentType() == 'application/json' &&
-            is_array( $answer )
-        )
-        {
-            /* Возврат структурированного результата */
-            $this
-            -> getApp()
-            -> getOutcomeList()
-            -> setParams( clValueFromObject( $answer, 'Outcome' ));
-        }
-        else
-        {
-            /* Возврат контента */
-            $this -> setContent( $answer );
-        }
-
+        $this -> contentType = $a;
         return $this;
     }
 
 
 
     /*
-        Запуск метода удаленной полезной нагрузки через REST протокол
-        c использованием конфигуратора
+        Возвращается текущее имя файла
     */
-    public function summon
+    public function getContentFileName()
+    {
+        return $this -> contentFileName;
+    }
+
+
+
+    /*
+        Установка текущего имени файла контента
+    */
+    public function setContentFileName
     (
-        /* Имя вызываемой полезной нагрузки */
-        string  $APayloadName,
-        /* Имя метода */
-        string  $APayloadMethod,
-        /* Дополнительные аргументы */
-        array   $AArguments = [],
-        /* Имя конфигураци с настройками */
-        string  $AConfig    = 'default'
+        /* Устанавливаемое имя файла */
+        string $a = null
     )
     {
-        /* Получение конфигурации удаленного сервера */
-        $config =
-        $this
-        -> getApp()
-        -> getParam([ 'web', 'remotePayloads', $AConfig ]);
-
-        if( empty( $config ))
-        {
-            $this -> setResult
-            (
-                'PayloadRemoteConfigIsEmpty',
-                [
-                    'congfig'   => $AConfig,
-                    'payload'   => $APayloadName,
-                    'method'    => $APayloadMethod
-                ]
-            );
-        }
-        else
-        {
-            $this -> summonOnHost
-            (
-                $APayloadName,
-                $APayloadMethod,
-                $AArguments,
-                clValueFromObject( $config, 'url', '127.0.0.1' ),
-                clValueFromObject( $config, 'requestTimeoutMls', 1000 ),
-                clValueFromObject( $config, 'type', 'dispatcher' )
-            );
-        }
-
+        $this -> contentFileName = $a;
         return $this;
     }
 }
