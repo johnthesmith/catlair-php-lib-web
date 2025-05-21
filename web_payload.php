@@ -62,7 +62,7 @@ class WebPayload extends Hub
 
 
     /*
-        Мутация полезной нагрузки
+        Mutate
     */
     public function mutate
     (
@@ -94,47 +94,39 @@ class WebPayload extends Hub
 
 
 
-//    /*
-//        Возвращает родителя мутанта
-//    */
-//    public function unmutate()
-//    {
-//        /* Перенос контента */
-//        if( method_exists( $this -> getParent(), 'setContent' ))
-//        {
-//            $this -> getParent() -> setContent( $this -> getContent() );
-//        }
-//        /* Перенос типа контента */
-//        if( method_exists( $this -> getParent(), 'setContentType' ))
-//        {
-//            $this -> getParent() -> setContentType
-//            (
-//                 $this -> getContentType()
-//            );
-//        }
-//        /* Выполненеи родительского метода анмутации */
-//        return parent::unmutate();
-//    }
+    /*
+        Unmutate
+    */
+    public function unmutate()
+    {
+        /* Return content */
+        if( method_exists( $this -> getParent(), 'setContent' ))
+        {
+            $this -> getParent() -> setContent( $this -> getContent() );
+        }
 
+        /* Return type of content */
+        if( method_exists( $this -> getParent(), 'setContentType' ))
+        {
+            $this -> getParent() -> setContentType
+            (
+                $this -> getContentType()
+            );
+        }
 
+        /* Return content file name */
+        if( method_exists( $this -> getParent(), 'setContentFileName' ))
+        {
+            $this -> getParent() -> setContentFileName
+            (
+                $this -> getContentFileName()
+            );
+        }
 
-//    /*
-//        Возвращает шаблон по идентификатору для сайта и языка
-//    */
-//    public function getTemplate
-//    (
-//        /* Идентификатор шаблона */
-//        string $AID         = null,
-//        /* Необязательный идентификатор сайта */
-//        string $AIDSite     = Web::SITE_CURRENT,
-//        /* Необязательный идентификатор языка */
-//        string $AIDLanguage = null
-//    )
-//    {
-//        return $this
-//        -> getApp()
-//        -> getTemplate( $AID, $AIDSite, $AIDLanguage );
-//    }
+        /* Call parent unmutate */
+        return parent::unmutate();
+    }
+
 
 
 
@@ -277,9 +269,184 @@ class WebPayload extends Hub
 
 
     /**************************************************************************
+        File utils
+    */
+
+    /*
+        Получение пути для файловой свалки сайта как то логи кэши и прочее
+        Вебсервер должен обладать правами записи в указанную папку
+    */
+    public function getDumpPath
+    (
+        /* Локальный путь внутри сайта относительно возвращаемого пути */
+        string $aLocal  = ''
+    )
+    {
+        return $this -> getRwPath
+        (
+            'dump' . clLocalPath( $aLocal )
+        );
+    }
+
+
+
+    /*
+        Получение путей журналов
+    */
+    public function getLogPath
+    (
+        /* Локальный путь внутри сайта относительно возвращаемого пути */
+        string $aLocal  = ''
+    )
+    {
+        return
+        $this -> getDumpPath
+        (
+            'log' . clLocalPath( $aLocal )
+        );
+    }
+
+
+
+    /*
+        Получение папки контента для проекта
+    */
+    public function getContentPath
+    (
+        string $aLocal  = '',
+        string $aProject = null
+    )
+    {
+        return
+        $this -> getRoPath
+        (
+            'content' . clLocalPath( $aLocal ),
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение папки контекста
+    */
+    public function getContextPath
+    (
+        string $aLocal   = '',
+        array $aContext = null,
+        string $aProject = null
+    )
+    {
+        $context = implode
+        (
+            '-',
+            empty( $aContext ) ? $this -> getContext() : $aContext
+        );
+        return $this -> getContentPath
+        (
+            $context . clLocalPath( $aLocal ),
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение пути файла
+    */
+    public function getContentFile
+    (
+        string $aIdFile     = null,
+        array $aContext     = [],
+        string $aProject    = null,
+        string $aLocal      = ''
+    )
+    {
+        return $this -> getContextPath
+        (
+            $aIdFile . clLocalPath( $aLocal ),
+            $aContext,
+            $aProject
+        );
+    }
+
+
+
+
+    /*
+        Получение пути любого доступного файла
+    */
+    public function getContentFileAny
+    (
+        string $aIdFile     = null,
+        array $aContext     = []
+    )
+    {
+        /* Запрос перечня проектов */
+        $projects = $this -> getApp() -> getProjects();
+        foreach( $projects as $projectPath )
+        {
+            if( !empty( $projectPath ))
+            {
+                $file = $this -> getContentFile
+                (
+                    $aIdFile,
+                    $aContext,
+                    $projectPath
+                );
+
+                $result = realpath( $file );
+                if( !empty( $result ))
+                {
+                    break;
+                }
+            }
+        }
+        return $result;
+    }
+
+
+
+    /**************************************************************************
+        Utils
+    */
+
+    /*
+        Return template content
+    */
+    public function getTemplate
+    (
+        string  $aId         = null,
+        array   $aContext    = []
+    )
+    {
+        $aContext = empty( $aContext ) ? $this -> getApp() -> getContext() : [];
+        $file = $this -> getContentFileAny( $aId, $aContext );
+
+        if( !empty( $file ))
+        {
+            $result = @file_get_contents( $file );
+        }
+        else
+        {
+            $result = 'Template ' .
+            $aId .
+            ' not found for context ' .
+            implode( '-', $aContext );
+        }
+        return $result;
+    }
+
+
+
+    /**************************************************************************
         Setters and getters
     */
 
+    public function getContext()
+    {
+        return $this -> getApp() -> getContext();
+    }
 
 
     /*
@@ -297,7 +464,7 @@ class WebPayload extends Hub
     */
     public function setContent
     (
-        /* Устанавливаемый конент */
+        /* Content */
         $a = null
     )
     {
@@ -308,7 +475,7 @@ class WebPayload extends Hub
 
 
     /*
-        Возвращается текущий контент
+        Return current content
     */
     public function getContentType()
     {
@@ -318,11 +485,11 @@ class WebPayload extends Hub
 
 
     /*
-        Установка конетнта
+        Set type of content
     */
     public function setContentType
     (
-        /* Устанавливаемый тип конента */
+        /* Type of content */
         string $a = null
     )
     {

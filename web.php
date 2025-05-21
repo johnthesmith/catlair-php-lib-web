@@ -20,6 +20,7 @@
 namespace catlair;
 
 
+
 /*
     Web server engine. Fork of Pusa.
     https://gitlab.com/catlair/pusa/-/tree/main
@@ -29,10 +30,10 @@ namespace catlair;
 */
 
 /*
-    Реализует сулчаи:
-        запуск апи
-        возврат статического файла
-        сборка динамического контента
+    Implements:
+        execution of an arbitrary payload,
+        returning a static file,
+        building and returning dynamic content
 */
 
 
@@ -64,6 +65,8 @@ class Web extends Engine
     const GIF   = 'image/gif';
     const ICO   = 'image/x-icon';
 
+
+
     /*
         Main command directive names
     */
@@ -72,28 +75,30 @@ class Web extends Engine
         Defines a constant for the path name used to generate content
         dynamically using a builder from the specified file.
     */
-    const DYNAMIC_KEY   = 'd';
+    const MAKE_DIRECTIVE   = 'make';
     /*
         Defines a constant for the URL key used to invoke payloads.
     */
-    const PAYLOAD_KEY   = 'p';
+    const EXEC_DIRECTIVE   = 'exec';
     /*
         Defines a constant for the URL key used to return a static file
         without processing it through the templating engine.
     */
-    const STATIC_KEY    = 's';
+    const READ_DIRECTIVE  = 'read';
 
-    /* Current key name used for dynamic content requests */
-    private $dynamicKey = self::DYNAMIC_KEY;
-    /* Current key name used for payload execution */
-    private $payloadKey = self::PAYLOAD_KEY;
     /* Current key name used for returning static files */
-    private $staticKey  = self::STATIC_KEY;
+    private $readDirective = self::READ_DIRECTIVE;
+    /* Current key name used for dynamic content requests */
+    private $makeDirective = self::MAKE_DIRECTIVE;
+    /* Current key name used for payload execution */
+    private $execDirective = self::EXEC_DIRECTIVE;
 
     /* Current url */
     private $url = null;
-
-
+    /* Current content */
+    private array $context = [];
+    /**/
+    private array $path = [];
 
     /*
         Create Web Appllication object
@@ -122,62 +127,75 @@ class Web extends Engine
     public function onRun()
     :self
     {
-        /* Create url incoming */
-        $this -> url = URL::create() -> parse
-        (
-            (
-                isset( $_SERVER[ 'HTTPS' ]) && $_SERVER[ 'HTTPS' ] === 'on'
-                ? "https"
-                : "http") .
-            "://" .
-            $_SERVER['HTTP_HOST'] .
-            $_SERVER['REQUEST_URI']
-        );
+        /* Create url object */
+        $this -> url = URL::create();
 
-        /* Retrive url path */
-        $path = $this -> url -> getPath();
-
-        /* Retrive url mode */
-        $mode = array_shift( $path );
+        /* Check the fpm mode */
+        if( $this -> isFpm() )
+        {
+            $this -> url -> fromRequest();
+        }
+        else
+        {
+            /* Retrive url for cli */
+            $this -> url -> parse( $this -> getParam([ 'web', 'cli', 'url' ]));
+        }
 
         $method = null;
         $payload = null;
+        $query = null;
+
+        /* Retrive url path */
+        $this -> path = $this -> url -> getPath();
+
+        /* Retrive url mode */
+        $mode = array_shift( $this -> path );
+
 
         switch( $mode )
         {
-            case $this -> payloadKey:
+            case $this -> execDirective:
                 /* Payload mode */
-                $method = array_pop( $path );
-                $payload = implode( '/', $path );
+                $method = array_pop( $this -> path );
+                $payload = implode( '/', $this -> path );
+                $query = $this -> url -> getParams();
             break;
-            case $this -> staticKey:
+            case $this -> readDirective:
                 /* Static file return mode */
-                $method = 'static';
                 $payload = 'api';
+                $method = 'read_content';
+                $query = $this -> url -> getParams();
             break;
-            case $this -> dynamicKey:
+            case $this -> makeDirective:
                 /* Dynamicc file return mode */
-                $method = 'dynamic';
                 $payload = 'api';
+                $method = 'make_content';
+                $query = $this -> url -> getParams();
             break;
         }
 
+        /* Read default context from config */
+        $this -> setContext( $this -> getParam([ 'web', 'default', 'context'], [] ));
+
         /* Define method and payload */
-        $method ??= 'unknown';
-        $payload ??= 'web';
+        $payload    ??= $this -> getParam( [ 'web', 'default', 'payload' ], 'api' );
+        $method     ??= $this -> getParam( [ 'web', 'default', 'method' ], 'default_content' );
+        $query      ??= $this -> getParam( [ 'web', 'default', 'query' ], [] );
 
         /* Buffers on. Preven all output for client */
         ob_start();
 
         /* Create and run web payload */
-        $payload = Payload::create( $this, $payload ) -> call( $method );
+        $payload = Payload::create( $this, $payload )
+        -> call( $method,  );
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
 
+        /* Check raw empty */
         if( strlen( $rawOutput ) > 0 )
         {
-            /* for non empty buffer */
+            /* For non empty buffer ... */
             $content = $rawOutput;
             $contentType = 'text/plain; charset=utf-8';
             $contentFileName = null;
@@ -188,13 +206,13 @@ class Web extends Engine
             {
                 /* Get content from payload */
                 $content
-                = method_exists( $payload,  'getContent' )
+                = method_exists( $payload, 'getContent' )
                 ? $payload -> getContent()
                 : null;
 
                 /* Get content type from payload*/
                 $contentType
-                = method_exists( $payload,  'getContentType' )
+                = method_exists( $payload, 'getContentType' )
                 ? $payload -> getContentType()
                 : self::HTML;
 
@@ -234,16 +252,81 @@ class Web extends Engine
         {
             header
             (
-                'Content-Disposition: attachment; filename="' .
+                'Content-Disposition: attachment; filename=' .
+                '"' .
                 $contentFileName .
                 '"'
             );
         }
 
         /* Final out put */
-        print_r( $content );
+        if( $this -> isCli() )
+        {
+            $this -> getLog() -> prn( $content );
+        }
+        else
+        {
+            print_r( $content );
+        }
 
         return $this;
     }
-}
 
+
+
+    /**************************************************************************
+        Utils
+    */
+
+    /*
+        Return template content
+    */
+    public function getTemplate
+    (
+        string $aId         = null,
+        array  $aContext    = []
+    )
+    {
+        $file = $this -> getContentFileAny( $AID, $AIDSite, $AIDLanguage );
+
+        if( !empty( $File ))
+        {
+            $Result = @file_get_contents( $File );
+        }
+        else
+        {
+            $Result = 'Template ' . $AID . ' not found for site ' . $AIDSite . ' language ' . $AIDLanguage;
+        }
+        return $Result;
+    }
+
+
+
+
+    /**************************************************************************
+        Setters and getters
+    */
+    public function setContext
+    (
+        array $a
+    )
+    {
+        sort( $a );
+        $this -> context = $a;
+        return $this;
+    }
+
+
+
+    public function getContext()
+    {
+        return $this -> context;
+    }
+
+
+
+    public function getPath()
+    {
+        return $this -> path;
+    }
+}
