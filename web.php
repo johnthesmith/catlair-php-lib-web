@@ -110,6 +110,60 @@ class Web extends Engine
     }
 
 
+    /**************************************************************************
+        Events
+    */
+
+    /*
+        on log settings event
+    */
+
+    public function onLogSetting()
+    :self
+    {
+        /* Call parent */
+        parent::onLogSetting();
+
+        /* Create url object */
+        $this -> url = URL::create();
+
+        /* Check the fpm mode */
+        if( $this -> isFpm() )
+        {
+            /* Build URL from request */
+            $this -> url -> fromRequest();
+
+            $logsPathPrefix =
+            $_SERVER['REMOTE_ADDR'] .
+            '_' .
+            md5( $_SERVER['HTTP_USER_AGENT'] );
+
+            /* Switch log to file */
+            $this
+            -> getLog()
+            -> setDestination( Log::FILE )
+            -> setLogPath( $this -> getLogsPath( $logsPathPrefix ) )
+            -> setLogFile
+            (
+                preg_replace
+                (
+                    '/[^a-zA-Z0-9]+/',
+                    '_',
+                    $this -> url -> toString()
+                )
+            ) -> warning('asd') -> lineEnd();
+            ;
+        }
+        else
+        {
+            /* Retrive url for cli */
+            $this -> url -> parse( $this -> getParam([ 'web', 'cli', 'url' ]));
+        }
+
+        return $this;
+    }
+
+
 
     /*
         Web application main method.
@@ -127,20 +181,6 @@ class Web extends Engine
     public function onRun()
     :self
     {
-        /* Create url object */
-        $this -> url = URL::create();
-
-        /* Check the fpm mode */
-        if( $this -> isFpm() )
-        {
-            $this -> url -> fromRequest();
-        }
-        else
-        {
-            /* Retrive url for cli */
-            $this -> url -> parse( $this -> getParam([ 'web', 'cli', 'url' ]));
-        }
-
         $method = null;
         $payload = null;
         $query = null;
@@ -317,7 +357,9 @@ class Web extends Engine
     }
 
 
-
+    /*
+        Set curernt contex
+    */
     public function getContext()
     {
         return $this -> context;
@@ -325,6 +367,9 @@ class Web extends Engine
 
 
 
+    /*
+        Return current url path
+    */
     public function getPath()
     {
         return $this -> path;

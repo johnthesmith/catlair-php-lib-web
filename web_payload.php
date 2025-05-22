@@ -439,6 +439,18 @@ class WebPayload extends Hub
 
 
 
+    /*
+        Put result in to content
+    */
+    public function resultToContent()
+    {
+        return $this
+        -> setContent( $this -> getResultAsArray() )
+        -> setContentType( Web::JSON );
+    }
+
+
+
     /**************************************************************************
         Setters and getters
     */
