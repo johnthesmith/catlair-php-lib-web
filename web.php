@@ -67,43 +67,10 @@ class Web extends Engine
     const ICO   = 'image/x-icon';
 
 
-    const ROUTE_DEFAULT =
-    [
-        'payload'   => 'api',
-        'class'     => '\catlair\Api',
-        'method'    => 'unknownRequest',
-        'query'     => [],
-        'enabled'   => true
-    ];
-
 
     /*
         Main command directive names
     */
-
-    /*
-        Defines a constant for the path name used to generate content
-        dynamically using a builder from the specified file.
-    */
-    const MAKE_DIRECTIVE   = 'make';
-
-    /*
-        Defines a constant for the URL key used to invoke payloads.
-    */
-    const EXEC_DIRECTIVE   = 'exec';
-
-    /*
-        Defines a constant for the URL key used to return a static file
-        without processing it through the templating engine.
-    */
-    const READ_DIRECTIVE  = 'read';
-
-    /* Current key name used for returning static files */
-    private $readDirective = self::READ_DIRECTIVE;
-    /* Current key name used for dynamic content requests */
-    private $makeDirective = self::MAKE_DIRECTIVE;
-    /* Current key name used for payload execution */
-    private $execDirective = self::EXEC_DIRECTIVE;
 
 
 
@@ -113,8 +80,6 @@ class Web extends Engine
     private array $context = [];
     /**/
     private array $path = [];
-    /* Set defaul route */
-    private array $routeDefault = self::ROUTE_DEFAULT;
 
 
 
@@ -219,14 +184,6 @@ class Web extends Engine
         /* Retrive url path */
         $this -> path = $this -> url -> getPath();
 
-        /* Build route, from path, config, or ROUTE_DEFAULT */
-        $route
-        = [ 'query' => $this -> url -> getParams() ]
-        + $this -> getRoute( $this -> path )
-        + $this -> getParam( [ 'web', 'default', 'route' ], [] )
-        + self::ROUTE_DEFAULT;
-
-
         /*
             Run payload
         */
@@ -235,9 +192,10 @@ class Web extends Engine
         ob_start();
 
         /* Create and run web payload */
-        $payload = Payload::create( $this, $route[ 'payload' ])
-        -> call( $route[ 'method' ], $route[ 'query' ]);
-
+        $payload = Payload::create( $this, implode( '.', $this -> path ) )
+//        -> call( $route[ 'method' ], $route[ 'query' ])
+        ;
+exit(1);
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
 
@@ -356,111 +314,6 @@ class Web extends Engine
 
 
 
-    /*
-        Return route array
-    */
-    public function getRoute
-    (
-        /* Url path fo routeng */
-        array  $aPath,
-        /* Optional specific project */
-        string $aProject    = null,
-    )
-    /*
-        paylaod library
-        class with namespace
-        method
-    */
-    :array
-    {
-        $path = implode( '.', $aPath );
-        $file = $this -> getRouteFileAny( $path . '.yaml' );
-        if( $file !== false )
-        {
-            $content = @file_get_contents( $file );
-        }
-        else
-        {
-            $content = '';
-            $this
-            -> getLog()
-            -> trace( 'Route not found' )
-            -> param( 'path', $path )
-            -> lineEnd();
-        }
-
-        $result = clParse( $content, 'yaml', $this ) + $this -> routeDefault;
-
-        return $result[ 'enabled'] ? $result : $this -> routeDefault;
-    }
-
-
-
-    /**************************************************************************
-        Files utils
-    */
-
-
-    /*
-        Return path to route folder
-        PROJECT/ro/router/local...
-    */
-    public function getRouterPath
-    (
-        /* Local path from router directory */
-        string $aLocal      = null,
-        /* Optional specific project */
-        string $aProject    = null,
-    )
-    :string
-    {
-        return
-        $this -> getRoPath( 'router', $aProject ?: null )
-        . clLocalPath( $aLocal );
-    }
-
-
-
-    /*
-        Retrieves the route path
-        A sequential search is performed based on the project list.
-        If the payload is not found, it returns false.
-    */
-    public function getRouteFileAny
-    (
-        /* The name of the payload in the format any/path/payload */
-        ? string $aPath = '',
-    )
-    {
-        /* Запрос перечня проектов */
-        $projects = $this -> getProjects();
-        foreach( $projects as $projectPath )
-        {
-            if( !empty( $projectPath ))
-            {
-                /* Return default ptoject path */
-                $file = self::getRouterPath( $aPath, $projectPath );
-                $this -> getLog()
-                -> trace( 'Looking for route' )
-                -> param( 'path', $file )
-                -> lineEnd();
-                $result = realpath( $file );
-                if( !empty( $result ))
-                {
-                    break;
-                }
-            }
-        }
-
-        if( !empty( $result ))
-        {
-            $this -> getLog()
-            -> trace( 'Found route' )
-            -> param( 'file', $result );
-        }
-
-        return $result;
-    }
 
 
     /**************************************************************************
@@ -495,4 +348,84 @@ class Web extends Engine
         return $this -> path;
     }
 
+
+
+    /*
+        Return payload route array
+    */
+    public function getRoute
+    (
+        /* Route name */
+        string $aPayloadName
+    )
+    /* Route array */
+    :array
+    {
+        $full = explode( '.', $aPayloadName );
+        $first = $full ? $full[ 0 ] : null;
+        if( $first !== null && $this -> existsRoute( $first ))
+        {
+            $result = parent::getRoute( $first );
+        }
+        else
+        {
+            $result = parent::getRoute( $aPayloadName );
+        }
+        return $result;
+    }
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+//
+///*
+//    Return payload route array
+//*/
+//public function getRoute
+//(
+//    /* Route name */
+//    array  $aPath,
+//    /* Optional specific project */
+//    string $aProject    = null,
+//)
+///* Route array */
+//:array
+//{
+//    $result = [];
+//
+//    /* Extract head element of path */
+//    $head = $aPath[0] ?? null;
+//    $file = $this -> getRouteFileAny( $head . '.yaml' );
+//    if( $file === false )
+//    {
+//        $path = implode( '.', $aPath );
+//        $file = $this -> getRouteFileAny( $path . '.yaml' );
+//    }
+//
+//    if( $file !== false )
+//    {
+//        $result = clParse( @file_get_contents( $file ), 'yaml', $this );
+//    }
+//    else
+//    {
+//        $content = '';
+//        $this
+//        -> getLog()
+//        -> trace( 'Route not found' )
+//        -> param( 'path', $path )
+//        -> lineEnd();
+//    }
+//
+//    return ( $result[ 'enabled' ] ?? true ) ? $result : [];
+//}
