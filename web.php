@@ -40,6 +40,7 @@ namespace catlair;
 
 /* Core libareies */
 require_once LIB . '/core/url.php';
+require_once LIB . '/core/parse.php';
 
 /* Application libraries */
 require_once LIB . '/app/engine.php';
@@ -66,6 +67,15 @@ class Web extends Engine
     const ICO   = 'image/x-icon';
 
 
+    const ROUTE_DEFAULT =
+    [
+        'payload'   => 'api',
+        'class'     => '\catlair\Api',
+        'method'    => 'unknownRequest',
+        'query'     => [],
+        'enabled'   => true
+    ];
+
 
     /*
         Main command directive names
@@ -76,10 +86,12 @@ class Web extends Engine
         dynamically using a builder from the specified file.
     */
     const MAKE_DIRECTIVE   = 'make';
+
     /*
         Defines a constant for the URL key used to invoke payloads.
     */
     const EXEC_DIRECTIVE   = 'exec';
+
     /*
         Defines a constant for the URL key used to return a static file
         without processing it through the templating engine.
@@ -93,12 +105,18 @@ class Web extends Engine
     /* Current key name used for payload execution */
     private $execDirective = self::EXEC_DIRECTIVE;
 
+
+
     /* Current url */
     private $url = null;
     /* Current content */
     private array $context = [];
     /**/
     private array $path = [];
+    /* Set defaul route */
+    private array $routeDefault = self::ROUTE_DEFAULT;
+
+
 
     /*
         Create Web Appllication object
@@ -110,6 +128,7 @@ class Web extends Engine
     }
 
 
+
     /**************************************************************************
         Events
     */
@@ -117,7 +136,6 @@ class Web extends Engine
     /*
         on log settings event
     */
-
     public function onLogSetting()
     :self
     {
@@ -157,7 +175,10 @@ class Web extends Engine
         else
         {
             /* Retrive url for cli */
-            $this -> url -> parse( $this -> getParam([ 'web', 'cli', 'url' ]));
+            $this -> url -> parse
+            (
+                $this -> getParam([ 'web', 'cli', 'url' ])
+            );
         }
 
         return $this;
@@ -181,53 +202,41 @@ class Web extends Engine
     public function onRun()
     :self
     {
-        $method = null;
-        $payload = null;
-        $query = null;
+        /*
+            Read main config arguments
+        */
+
+        /* Read default context from config */
+        $this -> setContext
+        (
+            $this -> getParam([ 'web', 'default', 'context'], [] )
+        );
+
+        /*
+            Build route
+        */
 
         /* Retrive url path */
         $this -> path = $this -> url -> getPath();
 
-        /* Retrive url mode */
-        $mode = array_shift( $this -> path );
+        /* Build route, from path, config, or ROUTE_DEFAULT */
+        $route
+        = [ 'query' => $this -> url -> getParams() ]
+        + $this -> getRoute( $this -> path )
+        + $this -> getParam( [ 'web', 'default', 'route' ], [] )
+        + self::ROUTE_DEFAULT;
 
 
-        switch( $mode )
-        {
-            case $this -> execDirective:
-                /* Payload mode */
-                $method = array_pop( $this -> path );
-                $payload = implode( '/', $this -> path );
-                $query = $this -> url -> getParams();
-            break;
-            case $this -> readDirective:
-                /* Static file return mode */
-                $payload = 'api';
-                $method = 'read_content';
-                $query = $this -> url -> getParams();
-            break;
-            case $this -> makeDirective:
-                /* Dynamicc file return mode */
-                $payload = 'api';
-                $method = 'make_content';
-                $query = $this -> url -> getParams();
-            break;
-        }
-
-        /* Read default context from config */
-        $this -> setContext( $this -> getParam([ 'web', 'default', 'context'], [] ));
-
-        /* Define method and payload */
-        $payload    ??= $this -> getParam( [ 'web', 'default', 'payload' ], 'api' );
-        $method     ??= $this -> getParam( [ 'web', 'default', 'method' ], 'default_content' );
-        $query      ??= $this -> getParam( [ 'web', 'default', 'query' ], [] );
+        /*
+            Run payload
+        */
 
         /* Buffers on. Preven all output for client */
         ob_start();
 
         /* Create and run web payload */
-        $payload = Payload::create( $this, $payload )
-        -> call( $method,  );
+        $payload = Payload::create( $this, $route[ 'payload' ])
+        -> call( $route[ 'method' ], $route[ 'query' ]);
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -335,12 +344,123 @@ class Web extends Engine
         }
         else
         {
-            $Result = 'Template ' . $AID . ' not found for site ' . $AIDSite . ' language ' . $AIDLanguage;
+            $Result = 'Template '
+            . $AID
+            . ' not found for site '
+            . $AIDSite
+            . ' language '
+            . $AIDLanguage;
         }
         return $Result;
     }
 
 
+
+    /*
+        Return route array
+    */
+    public function getRoute
+    (
+        /* Url path fo routeng */
+        array  $aPath,
+        /* Optional specific project */
+        string $aProject    = null,
+    )
+    /*
+        paylaod library
+        class with namespace
+        method
+    */
+    :array
+    {
+        $path = implode( '.', $aPath );
+        $file = $this -> getRouteFileAny( $path . '.yaml' );
+        if( $file !== false )
+        {
+            $content = @file_get_contents( $file );
+        }
+        else
+        {
+            $content = '';
+            $this
+            -> getLog()
+            -> trace( 'Route not found' )
+            -> param( 'path', $path )
+            -> lineEnd();
+        }
+
+        $result = clParse( $content, 'yaml', $this ) + $this -> routeDefault;
+
+        return $result[ 'enabled'] ? $result : $this -> routeDefault;
+    }
+
+
+
+    /**************************************************************************
+        Files utils
+    */
+
+
+    /*
+        Return path to route folder
+        PROJECT/ro/router/local...
+    */
+    public function getRouterPath
+    (
+        /* Local path from router directory */
+        string $aLocal      = null,
+        /* Optional specific project */
+        string $aProject    = null,
+    )
+    :string
+    {
+        return
+        $this -> getRoPath( 'router', $aProject ?: null )
+        . clLocalPath( $aLocal );
+    }
+
+
+
+    /*
+        Retrieves the route path
+        A sequential search is performed based on the project list.
+        If the payload is not found, it returns false.
+    */
+    public function getRouteFileAny
+    (
+        /* The name of the payload in the format any/path/payload */
+        ? string $aPath = '',
+    )
+    {
+        /* Запрос перечня проектов */
+        $projects = $this -> getProjects();
+        foreach( $projects as $projectPath )
+        {
+            if( !empty( $projectPath ))
+            {
+                /* Return default ptoject path */
+                $file = self::getRouterPath( $aPath, $projectPath );
+                $this -> getLog()
+                -> trace( 'Looking for route' )
+                -> param( 'path', $file )
+                -> lineEnd();
+                $result = realpath( $file );
+                if( !empty( $result ))
+                {
+                    break;
+                }
+            }
+        }
+
+        if( !empty( $result ))
+        {
+            $this -> getLog()
+            -> trace( 'Found route' )
+            -> param( 'file', $result );
+        }
+
+        return $result;
+    }
 
 
     /**************************************************************************
@@ -374,4 +494,5 @@ class Web extends Engine
     {
         return $this -> path;
     }
+
 }
