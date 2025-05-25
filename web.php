@@ -68,6 +68,15 @@ class Web extends Engine
 
 
 
+    /* Default payload route, extends engine */
+    const ROUTE_DEFAULT =
+    [
+        'metod' => '',
+        'query' => []
+    ];
+
+
+
     /*
         Main command directive names
     */
@@ -195,7 +204,7 @@ class Web extends Engine
         $payload = Payload::create( $this, implode( '.', $this -> path ) )
 //        -> call( $route[ 'method' ], $route[ 'query' ])
         ;
-exit(1);
+
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
 
@@ -361,19 +370,39 @@ exit(1);
     /* Route array */
     :array
     {
+        $result = [];
+
         $full = explode( '.', $aPayloadName );
-        $first = $full ? $full[ 0 ] : null;
-        if( $first !== null && $this -> existsRoute( $first ))
+
+        /* Extract head element of path */
+        $head = $full[0] ?? null;
+        $file = $this -> getRouteFileAny( $head . '.yaml' );
+        if( $file === false )
         {
-            $result = parent::getRoute( $first );
+            $file = $this -> getRouteFileAny( $aPayloadName . '.yaml' );
+        }
+
+        if( $file !== false )
+        {
+            $result = clParse( @file_get_contents( $file ), 'yaml', $this );
         }
         else
         {
-            $result = parent::getRoute( $aPayloadName );
+            $this
+            -> getLog()
+            -> trace( 'Web route not found' )
+            -> param( 'payload', $aPayloadName )
+            -> lineEnd();
         }
-        return $result;
-    }
 
+        $result
+        = $result
+        + $this -> getParam( [ 'engine', 'default', 'route' ], [] )
+        + parent::ROUTE_DEFAULT
+        + self::ROUTE_DEFAULT;
+
+        return ( $result[ 'enabled' ] ?? true ) ? $result : [];
+    }
 }
 
 
@@ -404,14 +433,6 @@ exit(1);
 //{
 //    $result = [];
 //
-//    /* Extract head element of path */
-//    $head = $aPath[0] ?? null;
-//    $file = $this -> getRouteFileAny( $head . '.yaml' );
-//    if( $file === false )
-//    {
-//        $path = implode( '.', $aPath );
-//        $file = $this -> getRouteFileAny( $path . '.yaml' );
-//    }
 //
 //    if( $file !== false )
 //    {
