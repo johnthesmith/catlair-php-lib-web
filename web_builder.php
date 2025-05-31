@@ -23,7 +23,6 @@ namespace catlair;
 
 /*
     Content Builder for the web.php engine.
-
     https://github.com/johnthesmith/catlair-php-lib-web
 */
 
@@ -36,68 +35,16 @@ require_once LIB . '/web/web.php';      /* Include debug system */
 
 class WebBuilder extends Builder
 {
-    private $Web = null;
-
-
-
     /*
         Create web builder
     */
-    static public function create()
-    {
-        $Result = new WebBuilder();
-        return $Result;
-    }
-
-
-
-    /*
-        Building external content
-    */
-    static public function createContent
+    static public function create
     (
-        string  $AContent   = null,
-        bool    $AOptimize  = null,
-        bool    $AReplace   = true,
-        Web     $AWeb       = null
+        $aWeb
     )
     {
-        $AContent = $AContent === null ? '' : $AContent;
-
-        $Builder = WebBuilder::create();
-        $Builder -> Web = $AWeb;
-        $Builder -> setContentType( $AWeb -> getContentType() );
-
-        /*
-            Build the income peremeters
-            This %keys% will be replaced in reuslt content to value of keys.
-        */
-        $Builder -> Income
-        -> setParams
-        (
-            array_merge
-            (
-                $_COOKIE,
-                $_GET,
-                $_POST
-            )
-        );
-
-        $Content = $Builder -> parsing( $AContent );
-
-        if( $AReplace )
-        {
-            $Content = $Builder -> replace( $Content );
-        }
-
-        if( $AOptimize )
-        {
-            $Content = $Builder -> optimize( $Content );
-        }
-
-        $AWeb -> setContentType( $Builder -> getContentType() );
-
-        return $Content;
+        $Result = new WebBuilder( $aWeb );
+        return $Result;
     }
 
 
@@ -115,13 +62,12 @@ class WebBuilder extends Builder
     {
         switch( $ACommand )
         {
-
             /* Write header */
             case 'header':
                 if( $this -> IsOk())
                 {
-                    $Header = strtolower( $AValue ? $AValue : $Params[ 'header' ]);
-                    header( $AContent, true );
+                    $header = strtolower( $AValue ? $AValue : $Params[ 'header' ]);
+                    header( $header, true );
                 }
             break;
 
@@ -165,10 +111,19 @@ class WebBuilder extends Builder
     public function getTemplate
     (
         string $AID,
-        string $ADefault   = null
+        string $ADefault = null,
+        array $aContext  = []
     )
     :string
     {
-        return $this -> Web -> getTemplate( $AID );
+        /* Call web pallication */
+        return $this -> getOwner() -> getTemplate( $AID, $aContext );
+    }
+
+
+
+    public function getApp()
+    {
+        return $this -> getOwner();
     }
 }

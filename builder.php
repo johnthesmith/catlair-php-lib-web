@@ -36,20 +36,24 @@ namespace catlair;
 */
 
 
-
-require_once LIB . '/core/log.php';             /* Include debug system */
+/* Include base utils for project */
+require_once LIB . '/core/utils.php';
+require_once LIB . '/core/parse.php';
 require_once LIB . '/core/result.php';
-require_once LIB . '/core/utils.php';           /* Include base utils for project */
+/* Include debug system */
+require_once LIB . '/core/log.php';
 
 
 
 class Builder extends Result
 {
+    /* Owner */
+    private $Owner             = null;
+
     /* Settings */
     private $FContent           = null;     /* Current content */
     private $FContentType       = null;     /* Content type like text/html text/css etc...*/
     private $FRecursDepth       = 100;      /* Maximum recursion depth */
-    private $FRootPath          = '.';      /* Root path for content and libraries */
 
     /* Search and replace arrays */
     public $Income              = null;
@@ -62,17 +66,29 @@ class Builder extends Result
     /*
         Catlairs Builder constructor
     */
-    function __construct()
+    function __construct
+    (
+        /* Any owner class */
+        $AOwner
+    )
     {
+        $this -> Owner = $AOwner;
         $this -> Income = new Params();
         $this -> SetOk();
     }
 
 
 
-    static public function create()
+    /*
+        Constructor
+    */
+    static public function create
+    (
+        /* Any owner class */
+        $AOwner
+    )
     {
-        return new Builder();
+        return new Builder( $AOwner );
     }
 
 
@@ -114,7 +130,10 @@ class Builder extends Result
     {
         $this -> FContent = $this -> parsing( $this -> FContent );
         $this -> FContent = $this -> replace( $this -> FContent );
-        if ( $this -> Optimize ) $this -> FContent = $this -> Optimize( $this -> FContent );
+        if( $this -> Optimize )
+        {
+            $this -> FContent = $this -> Optimize( $this -> FContent );
+        }
         return $this;
     }
 
@@ -208,64 +227,67 @@ class Builder extends Result
 
 
     /*
-        Recurcive parsing for content from $ACountent:string with depth $ADepth:integer
+        Recurcive parsing for content from Content with depth
         After parsing funciton will return new content
     */
     private function pars
     (
+        /* Content for parsing */
         string $AContent = '',
+        /* Depth */
         int $ADepth
     )
     {
-        $ADepth = $ADepth + 1;
+        $ADepth ++;
         if( $ADepth < $this -> FRecursDepth )
         {
             do
             {
-                    /* Getting list of tags over regvar with cl tag */
-                    preg_match( '/\<cl(?:(\<)|".+?"|.|\n)*?(?(1)\/cl|\/)\>/', $AContent, $m, PREG_OFFSET_CAPTURE );
-                    if( count( $m ) > 0 )
-                    {
-                        $b = $m[0][1];
-                        $l = strlen ($m[0][0]);
-                        $Source = $m[0][0];
-                        if ( $l > 0 )
-                        {
-                            $Source = $this -> replace( $Source );
-                            $XMLSource = '<?xml version="1.0"?>' . $Source;
-                            libxml_use_internal_errors(true);
-                            $XML = simplexml_load_string( $XMLSource );
-                            if( empty( $XML ))
-                            {
-                                $this -> setResult
-                                (
-                                    'XMLError',
-                                    [ 'Source' => $Source ],
-                                    'XML Error [%Source%]'
-                                );
-                                $Result = '';
-                            }
-                            else
-                            {
-                                $Content = '';
-                                $this -> BuildElement( $Content, $XML, $ADepth );
-                                $Result = $Content;
-                            }
+                /* Getting list of tags over regvar with cl tag */
+                preg_match
+                (
+                    '/\<cl(?:(\<)|".+?"|.|\n)*?(?(1)\/cl|\/)\>/',
+                    $AContent,
+                    $m,
+                    PREG_OFFSET_CAPTURE
+                );
 
-                            /* Check recurstion error */
-                            if ( $ADepth + 1 ==  $this -> FRecursDepth )
-                            {
-                                $this -> SetResult
-                                (
-                                    'Recurs',
-                                    [],
-                                    'Recursion depth limit [' . $ADepth .'] [' . $XMLSource . ']'
-                                );
-                            }
-                            $AContent = trim( substr_replace( $AContent, $Result, $b, $l ));
+                if( count( $m ) > 0 )
+                {
+                    $b = $m[0][1];
+                    $l = strlen ($m[0][0]);
+                    $Source = $m[0][0];
+
+                    if ( $l > 0 )
+                    {
+                        $Source = $this -> replace( $Source );
+                        $XMLSource = implode( '', ['<?xml version="1.0"?>',  $Source] );
+                        libxml_use_internal_errors(true);
+                        $XML = simplexml_load_string( $XMLSource );
+
+                        if( empty( $XML ))
+                        {
+                            $Result = 'cl-xml-format-error';
                         }
+                        else
+                        {
+                            $Content = isset( $XML[ 0 ]) ? $XML[ 0 ] : '';
+                            $this -> BuildElement( $Content, $XML, $ADepth );
+                            $Result = $Content;
+                        }
+
+                        /* Check recurstion error */
+                        if ( $ADepth + 1 ==  $this -> FRecursDepth )
+                        {
+                            $Result = 'cl-recursion-error';
+                        }
+
+                        /* Replace in content */
+                        $AContent = trim( substr_replace( $AContent, $Result, $b, $l ));
                     }
-            } while ( count( $m ) > 0 && $this -> IsOk() );
+                }
+            }
+            while ( count( $m ) > 0 && $this -> isOk() );
         }
         else
         {
@@ -282,15 +304,25 @@ class Builder extends Result
     */
     private function buildElement
     (
-        string &$AContent,         /* contain text content */
-        &$AElement,         /* simplexml it is text <cl param="value".../> or multiline XML <cl><command params="value"...></cl>. */
-        $ARecursDepth       /* integer it is a current recursion depth. Zero by default. */
+        /* contain text content */
+        string &$AContent,
+        /*
+            simplexml with text
+                <cl param="value".../>
+            or multiline XML
+                <cl>
+                    <command params="value"...>
+                </cl>
+        */
+        &$AElement,
+        /* integer it is a current recursion depth. Zero by default. */
+        $ARecursDepth
     )
     {
         if( $this -> IsOk() )
         {
             /* Processing of string as a key with parametes */
-            $this -> Exec( $AContent, $AElement -> getName(), null, $AElement );
+            $this -> exec( $AContent, $AElement -> getName(), null, $AElement );
 
             /* Processing of directives in pair key=>value */
             if( $AElement -> getName() == 'cl' )
@@ -335,6 +367,7 @@ class Builder extends Result
     */
     private function exec
     (
+        /* Content */
         &$AContent,
         $ACommand,       /* Command */
         $AValue,
@@ -362,12 +395,19 @@ class Builder extends Result
                         }
                         else
                         {
-                            /* Unknow key is found and it is not a macrochange string (%example%) in cl tag */
+                            /*
+                                Unknow key is found and it is not a macrochange
+                                string (%example%) in cl tag
+                            */
                             $this -> SetResult
                             (
-                                'UnknownKey',
-                                [],
-                                'Unknown key [' . $ACommand . '] (cl; set; add; file; replace; convert; exec; header; include ets...)'
+                                'unknown-key',
+                                [
+                                    'message' =>
+                                    'Unknown key [' .
+                                    $ACommand .
+                                    '] (cl; set; add; file; replace; convert; exec; header; include ets...)'
+                                ],
                             );
                         }
                     }
@@ -442,7 +482,12 @@ class Builder extends Result
             case 'replace':
                 if( $this -> IsOk())
                 {
-                    $AContent = str_replace( $Params[ 'from' ], $Params[ 'to' ], $AContent );
+                    $AContent = str_replace
+                    (
+                        $Params[ 'from' ],
+                        $Params[ 'to' ],
+                        $AContent
+                    );
                 }
             break;
 
@@ -468,11 +513,15 @@ class Builder extends Result
                 if( $this -> IsOk())
                 {
                     $ID = $AValue ? $AValue : $Params[ 'id' ];
-                    $Source = $this -> GetTemplate( (string) $ID );
+                    $Source = $this -> getTemplate( (string) $ID );
                     $JSON = json_decode( $Source, true );
                     if( empty( $JSON ))
                     {
-                        $this -> SetResult( 'JSONParsingParamsError', [ 'Source' => $Source ] );
+                        $this -> SetResult
+                        (
+                            'json-pars-param-error',
+                            [ 'Source' => $Source ]
+                        );
                     }
                     else
                     {
@@ -488,31 +537,22 @@ class Builder extends Result
                 }
             break;
 
-            /* Collection */
+            /*
+                Collection
+            */
             case 'keys':
                 if( $this -> IsOk())
                 {
-                    $JSON = json_decode( $AContent, true );
-                    if( $JSON !== null )
+                    $r = new Result();
+                    $keys = clParse( $AContent, 'yaml', $r );
+                    if( $r -> isOk() )
                     {
-                        foreach( $JSON as $Key => $Value )
-                        {
-                            $this -> Income -> SetParam( $Key, $Value );
-                        }
+                        $this -> getIncome() -> addParams( $keys );
                         $AContent = '';
                     }
                     else
                     {
-                        $this -> SetResult
-                        (
-                            'JSONParsingKeyError',
-                            [
-                                'Content' => $AContent,
-                                'Command' => $ACommand,
-                                'Value' => $AValue,
-                                'Params' => $Params
-                            ]
-                        );
+                        $AContent = json_encode( $r -> getResultAsArray() );
                     }
                 }
             break;
@@ -563,8 +603,13 @@ class Builder extends Result
                         default:
                             $this -> SetResult
                             (
-                                'UnknownConvert', [],
-                                'Unknown convert mode [' . $To . '] (clear; html; pure; uri; md5; base64; default)'
+                                'unknown-convert',
+                                [
+                                    'message' =>
+                                    'Unknown convert mode ['
+                                    . $To
+                                    . '] (clear; html; pure; uri; md5; base64; default)'
+                                ]
                             );
                         break;
                     }
@@ -615,8 +660,8 @@ class Builder extends Result
     */
     public function getTemplate
     (
-        string $AID,
-        string $ADefault   = ''
+        /* Template id */
+        string $aId
     )
     :string
     {
@@ -624,10 +669,10 @@ class Builder extends Result
         {
             $this -> setResult
             (
-                'TemplateNotFound',
+                'template-not-found',
                 [
-                    'ID'        => $AID,
-                    'Default'   => $ADefault,
+                    'id'        => $aId,
+                    'default'   => $aDefault,
                 ]
             );
         }
@@ -693,48 +738,6 @@ class Builder extends Result
 
 
 
-    /*
-        Set Root path from $APath:string for file operations.
-    */
-    public function setRootPath($APath)
-    {
-        $this -> FRootPath = $APath;
-        return $this;
-    }
-
-
-
-    /*
-        Return root path for all file operations.
-    */
-    public function getRootPath()
-    {
-        return $this->FRootPath;
-    }
-
-
-
-    /*
-        Set default language for builder
-    */
-    public function setIDLangDefault( $AValue )
-    {
-        $this -> IDLangDefault = $AValue;
-        return $this;
-    }
-
-
-
-    /*
-        Get default language for builder
-    */
-    public function getIDLangDefault()
-    {
-        return $this -> IDLangDefault;
-    }
-
-
-
     public function setContentType
     (
         $AValue
@@ -749,5 +752,23 @@ class Builder extends Result
     public function getContentType()
     {
         return $this -> FContentType;
+    }
+
+
+
+    public function getOwner()
+    {
+        return $this -> Owner;
+    }
+
+
+
+    public function setIncome
+    (
+        array $a
+    )
+    {
+        $this -> Income -> setParams( $a );
+        return $this;
     }
 }

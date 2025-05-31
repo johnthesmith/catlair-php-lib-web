@@ -68,21 +68,9 @@ class Web extends Engine
 
 
 
-    /* Default payload route, extends engine */
-    const ROUTE_DEFAULT =
-    [
-        'metod' => '',
-        'query' => []
-    ];
-
-
-
     /*
         Main command directive names
     */
-
-
-
     /* Current url */
     private $url = null;
     /* Current content */
@@ -180,6 +168,19 @@ class Web extends Engine
             Read main config arguments
         */
 
+        if
+        (
+            empty( $this -> url -> getPath()) &&
+            empty( $this -> url -> getParams())
+        )
+        {
+            /* Set default path */
+            $this -> url -> setUri
+            (
+                $this -> getParam([ 'web', 'default', 'uri' ], '' )
+            );
+        }
+
         /* Read default context from config */
         $this -> setContext
         (
@@ -201,9 +202,7 @@ class Web extends Engine
         ob_start();
 
         /* Create and run web payload */
-        $payload = Payload::create( $this, implode( '.', $this -> path ) )
-//        -> call( $route[ 'method' ], $route[ 'query' ])
-        ;
+        $payload = Payload::create( $this, implode( '/', $this -> path ));
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -290,6 +289,13 @@ class Web extends Engine
 
 
 
+
+    /**************************************************************************
+        File path utils
+    */
+
+
+
     /**************************************************************************
         Utils
     */
@@ -299,29 +305,26 @@ class Web extends Engine
     */
     public function getTemplate
     (
-        string $aId         = null,
-        array  $aContext    = []
+        string  $aId         = null,
+        array   $aContext    = []
     )
     {
-        $file = $this -> getContentFileAny( $AID, $AIDSite, $AIDLanguage );
+        $aContext = empty( $aContext ) ? $this -> getContext() : [];
+        $file = $this -> getContentFileAny( $aId, $aContext );
 
-        if( !empty( $File ))
+        if( !empty( $file ))
         {
-            $Result = @file_get_contents( $File );
+            $result = @file_get_contents( $file );
         }
         else
         {
-            $Result = 'Template '
-            . $AID
-            . ' not found for site '
-            . $AIDSite
-            . ' language '
-            . $AIDLanguage;
+            $result = 'Template ' .
+            $aId .
+            ' not found for context ' .
+            implode( '-', $aContext );
         }
-        return $Result;
+        return $result;
     }
-
-
 
 
 
@@ -357,96 +360,4 @@ class Web extends Engine
         return $this -> path;
     }
 
-
-
-    /*
-        Return payload route array
-    */
-    public function getRoute
-    (
-        /* Route name */
-        string $aPayloadName
-    )
-    /* Route array */
-    :array
-    {
-        $result = [];
-
-        $full = explode( '.', $aPayloadName );
-
-        /* Extract head element of path */
-        $head = $full[0] ?? null;
-        $file = $this -> getRouteFileAny( $head . '.yaml' );
-        if( $file === false )
-        {
-            $file = $this -> getRouteFileAny( $aPayloadName . '.yaml' );
-        }
-
-        if( $file !== false )
-        {
-            $result = clParse( @file_get_contents( $file ), 'yaml', $this );
-        }
-        else
-        {
-            $this
-            -> getLog()
-            -> trace( 'Web route not found' )
-            -> param( 'payload', $aPayloadName )
-            -> lineEnd();
-        }
-
-        $result
-        = $result
-        + $this -> getParam( [ 'engine', 'default', 'route' ], [] )
-        + parent::ROUTE_DEFAULT
-        + self::ROUTE_DEFAULT;
-
-        return ( $result[ 'enabled' ] ?? true ) ? $result : [];
-    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-//
-///*
-//    Return payload route array
-//*/
-//public function getRoute
-//(
-//    /* Route name */
-//    array  $aPath,
-//    /* Optional specific project */
-//    string $aProject    = null,
-//)
-///* Route array */
-//:array
-//{
-//    $result = [];
-//
-//
-//    if( $file !== false )
-//    {
-//        $result = clParse( @file_get_contents( $file ), 'yaml', $this );
-//    }
-//    else
-//    {
-//        $content = '';
-//        $this
-//        -> getLog()
-//        -> trace( 'Route not found' )
-//        -> param( 'path', $path )
-//        -> lineEnd();
-//    }
-//
-//    return ( $result[ 'enabled' ] ?? true ) ? $result : [];
-//}

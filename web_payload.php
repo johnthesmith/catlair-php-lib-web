@@ -129,6 +129,34 @@ class WebPayload extends Hub
 
 
 
+    /*
+        Return template content
+    */
+    public function getTemplate
+    (
+        /**/
+        string  $aId         = null,
+        array   $aContext    = []
+    )
+    {
+        $aContext = empty( $aContext ) ? $this -> getContext() : [];
+        $file = $this -> getContentFileAny( $aId, $aContext );
+
+        if( !empty( $file ))
+        {
+            $result = @file_get_contents( $file );
+        }
+        else
+        {
+            $result = 'Template ' .
+            $aId .
+            ' not found for context ' .
+            implode( '-', $aContext );
+        }
+        return $result;
+    }
+
+
 
 //    /*
 //        Запуск метода удаленной полезной нагрузки через REST
@@ -309,137 +337,6 @@ class WebPayload extends Hub
 
 
     /*
-        Получение папки контента для проекта
-    */
-    public function getContentPath
-    (
-        string $aLocal  = '',
-        string $aProject = null
-    )
-    {
-        return
-        $this -> getRoPath
-        (
-            'content' . clLocalPath( $aLocal ),
-            $aProject
-        );
-    }
-
-
-
-    /*
-        Получение папки контекста
-    */
-    public function getContextPath
-    (
-        string $aLocal   = '',
-        array $aContext = null,
-        string $aProject = null
-    )
-    {
-        $context = implode
-        (
-            '-',
-            empty( $aContext ) ? $this -> getContext() : $aContext
-        );
-        return $this -> getContentPath
-        (
-            $context . clLocalPath( $aLocal ),
-            $aProject
-        );
-    }
-
-
-
-    /*
-        Получение пути файла
-    */
-    public function getContentFile
-    (
-        string $aIdFile     = null,
-        array $aContext     = [],
-        string $aProject    = null,
-        string $aLocal      = ''
-    )
-    {
-        return $this -> getContextPath
-        (
-            $aIdFile . clLocalPath( $aLocal ),
-            $aContext,
-            $aProject
-        );
-    }
-
-
-
-
-    /*
-        Получение пути любого доступного файла
-    */
-    public function getContentFileAny
-    (
-        string $aIdFile     = null,
-        array $aContext     = []
-    )
-    {
-        /* Запрос перечня проектов */
-        $projects = $this -> getApp() -> getProjects();
-        foreach( $projects as $projectPath )
-        {
-            if( !empty( $projectPath ))
-            {
-                $file = $this -> getContentFile
-                (
-                    $aIdFile,
-                    $aContext,
-                    $projectPath
-                );
-
-                $result = realpath( $file );
-                if( !empty( $result ))
-                {
-                    break;
-                }
-            }
-        }
-        return $result;
-    }
-
-
-
-    /**************************************************************************
-        Utils
-    */
-
-    /*
-        Return template content
-    */
-    public function getTemplate
-    (
-        string  $aId         = null,
-        array   $aContext    = []
-    )
-    {
-        $aContext = empty( $aContext ) ? $this -> getApp() -> getContext() : [];
-        $file = $this -> getContentFileAny( $aId, $aContext );
-
-        if( !empty( $file ))
-        {
-            $result = @file_get_contents( $file );
-        }
-        else
-        {
-            $result = 'Template ' .
-            $aId .
-            ' not found for context ' .
-            implode( '-', $aContext );
-        }
-        return $result;
-    }
-
-
-
-    /*
         Put result in to content
     */
     public function resultToContent()
@@ -448,6 +345,32 @@ class WebPayload extends Hub
         -> setContent( $this -> getResultAsArray() )
         -> setContentType( Web::JSON );
     }
+
+
+
+    /*
+        Convert array   [a,b,c,d]
+        in to array     [ a => b, c => d ]
+    */
+    protected function getPathKeyValue
+    (
+        array $segments
+    )
+    : array
+    {
+        $result = [];
+        for( $i = 0; $i < count( $segments ); $i += 2 )
+        {
+            $key = $segments[ $i ] ?? null;
+            $val = $segments[ $i + 1 ] ?? null;
+            if( $key !== null )
+            {
+                $result[ $key ] = $val;
+            }
+        }
+        return $result;
+    }
+
 
 
 
@@ -533,4 +456,109 @@ class WebPayload extends Hub
         $this -> contentFileName = $a;
         return $this;
     }
+
+
+
+    /*
+        Получение папки контента для проекта
+    */
+    public function getContentPath
+    (
+        string $aLocal  = '',
+        string $aProject = null
+    )
+    {
+        return
+        $this -> getRoPath
+        (
+            'content' . clLocalPath( $aLocal ),
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение папки контекста
+    */
+    public function getContextPath
+    (
+        string $aLocal   = '',
+        array $aContext = null,
+        string $aProject = null
+    )
+    {
+        $context = implode
+        (
+            '-',
+            empty( $aContext ) ? $this -> getContext() : $aContext
+        );
+        return $this -> getContentPath
+        (
+            $context . clLocalPath( $aLocal ),
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение пути файла
+    */
+    public function getContentFile
+    (
+        string $aIdFile     = null,
+        array $aContext     = [],
+        string $aProject    = null,
+        string $aLocal      = ''
+    )
+    {
+        return $this -> getContextPath
+        (
+            $aIdFile . clLocalPath( $aLocal ),
+            $aContext,
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение пути любого доступного файла
+    */
+    public function getContentFileAny
+    (
+        string  $aIdFile     = null,
+        array   $aContext     = []
+    )
+    {
+        /* Запрос перечня проектов */
+        $projects = $this -> getApp() -> getProjects();
+
+        /* Обход проектов для запроса пути */
+        foreach( $projects as $projectPath )
+        {
+            if( !empty( $projectPath ))
+            {
+                $file = $this -> getContentFile
+                (
+                    $aIdFile,
+                    $aContext,
+                    $projectPath
+                );
+                $result = realpath( $file );
+                if( !empty( $result ))
+                {
+                    break;
+                }
+            }
+        }
+        return $result;
+    }
+
 }
+
+
+
+
+
