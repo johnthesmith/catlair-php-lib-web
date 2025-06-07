@@ -21,54 +21,57 @@ namespace catlair;
 
 
 
+require_once LIB . '/web/web.php';
+
+
 /*
     Session class.
-    Contain all information about current session
-
+    Contain information about current session
     https://github.com/johnthesmith/catlair-php-lib-web
 */
-
-
-
-class TSession extends TResult
+class Session extends Result
 {
-    const USER_UNKNOWN          = 'user_unknown';
     const SESSION_LOCAL_HOST    = 'localhost';
+    const SESSION_COOKIE        = 'session';
 
-    private $SSLMethod          = null;
-    private $SSLKey             = null;
-    private $SSLLengthVector    = null;
+    private Web | null  $app    = null;
+    private $sslMethod          = '';
+    private $sslKey             = '';
+    private $sslLengthVector    = 16;
 
-    /* Private declration */
-    private $JSON               = null;
+    /*
+        Private declration
+        [
+            i => unique id
+            u => user
+            t => exparation moment at mcs
+            h => client host
+            d => [ user data ]
+        ]
+    */
+    private array $token = [];
+
+
 
     /*
         Constructor
     */
     public function __construct
     (
-        $ASSLMethod         = 'aes-256-cbc',
-        $ASSLKey            = null,
-        $ASSLLengthVector   = 32
+        Web             $aApp,
+        string          $aSslMethod         = 'aes-256-cbc',
+        string          $aSslKey            = '',
+        int             $aSslLengthVector   = 16
     )
     {
-        /* Define empy JSON session */
-        $this -> JSON = [];
-
+        $this -> app = $aApp;
+        /* Define ssl settings */
         $this
-        -> SetDomain            ( null )
-        -> SetSite              ( null )
-        -> SetLanguage          ( null )
-        -> SetSSLMethod         ( $ASSLMethod )
-        -> SetSSLKey            ( $ASSLKey )
-        -> SetSSLLengthVector   ( $ASSLLengthVector )
-        -> Set
-        (
-            'Remote',
-            $this -> IsCLI()
-            ? self::SESSION_LOCAL_HOST
-            : $_SERVER[ 'REMOTE_ADDR' ]
-        );
+        -> setSslMethod         ( $aSslMethod )
+        -> setSslKey            ( $aSslKey )
+        -> setSslLengthVector   ( $aSslLengthVector )
+        -> open()
+        ;
     }
 
 
@@ -77,21 +80,44 @@ class TSession extends TResult
         Static create method.
         Recomended for use.
     */
-    static public function Create
+    static public function create
     (
-        $ASSLMethod         = 'aes-256-cbc',
-        $ASSLKey            = null,
-        $ASSLLengthVector   = 16
+        Web     $aApp,
+        string  $aSslMethod         = 'aes-256-cbc',
+        string  $aSslKey            = '',
+        int     $aSslLengthVector   = 16
     )
+    :Session
     {
-        return new TSession( $ASSLMethod, $ASSLKey, $ASSLLengthVector );
+        return new Session
+        (
+            $aApp,
+            $aSslMethod,
+            $aSslKey,
+            $aSslLengthVector
+        );
     }
 
 
 
-    public function IsCLI()
+    /*
+        Reset session
+    */
+    public function reset()
+    :Session
     {
-        return php_sapi_name() == 'cli';
+        /* Define empy token session */
+        $this -> token =
+        [
+            'i' => clUUID(),
+            'u' => null,
+            't' => null,
+            'h' => $this -> app -> isCLI()
+            ? self::SESSION_LOCAL_HOST
+            : $_SERVER[ 'REMOTE_ADDR' ],
+            'd' => []
+        ];
+        return $this;
     }
 
 
@@ -99,25 +125,88 @@ class TSession extends TResult
     /*
         Open new Session
     */
-    public function &Open( $ASession = null )
+    public function open()
+    :Session
     {
-        if( $this -> IsCLI())
+        /* Retrive the token from the cookie */
+        $source = $_COOKIE[ self::SESSION_COOKIE ] ?? null;
+        $tokenParts = explode( '|', $source );
+        $this -> token = [];
+        if( count( $tokenParts ) == 2 )
         {
-            /* Session ID form input */
-            $this
-            -> SetDomain    ( DOMAIN_LOCALHOST )
-            -> SetSite      ( null )
-            -> SetLanguage  ( null );
+            $encoded = openssl_decrypt
+            (
+                base64_decode( $tokenParts[ 1 ]),
+                $this -> getSslMethod(),
+                $this -> getSslKey(),
+                OPENSSL_RAW_DATA,
+                base64_decode( $tokenParts[ 0 ])
+            );
+
+            $token = json_decode( $encoded, true );
+
+            if
+            (
+                !empty( $token )
+                && is_array( $token )
+//              && not expare
+            )
+            {
+                $this -> token = $token;
+            }
         }
-        else
+
+        /* Reset session if it is not valid */
+        if( empty( $this -> token ))
         {
-            /* Получение сессии из куки */
-            $this -> SetSessionInfo( $ASession );
-            /* Check the session on expire */
-            if( $this -> GetExpireAfter() < 0 ) $this -> Clear();
+            $this -> reset();
         }
 
         return $this;
+    }
+
+
+
+    /*
+        Return encripted session information - token
+    */
+    private function buildToken
+    (
+        int $aExpire = null
+    )
+    :string
+    {
+        /* Copy of array */
+        $token = json_decode( json_encode( $this->token ), true);
+
+        if( !empty( $aExpire ))
+        {
+            $token[ 't' ] = Moment::Create()
+            -> now()
+            -> add( $aExpire )
+            -> get();
+        }
+
+        /* Create init vector */
+        $initVector = openssl_random_pseudo_bytes
+        (
+            $this -> getSSLLengthVector()
+        );
+
+        return
+        base64_encode( $initVector ) .
+        '|' .
+        base64_encode
+        (
+            openssl_encrypt
+            (
+                json_encode( $token ),
+                $this -> getSSLMethod(),
+                $this -> getSSLKey(),
+                OPENSSL_RAW_DATA,
+                $initVector
+            )
+        );
     }
 
 
@@ -125,131 +214,49 @@ class TSession extends TResult
     /*
         Set session data in to the cookie
     */
-    public function &Send()
+    public function send()
+    :Session
     {
         /* return session ID to cookies */
-        if ( !self::IsCLI() )
+        if ( !$this -> app -> isCli() )
         {
-            setcookie( 'session', $this -> GetSessionInfo(), 0, '/', '', true );
-        }
-        return $this;
-    }
-
-
-
-
-    /*
-        Create new session ID
-    */
-    public function &Clear()
-    {
-        $this -> Del( 'Login' );      /* Удаляем из текущей сессии логин */
-        $this -> Del( 'LoginSite' );  /* Удаляем из текущей сессии сайт логина */
-        $this -> Del( 'Token' );      /* Удаляем из текущей сессии токен */
-        return $this;
-    }
-
-
-
-    /*
-        Return encripted session information
-    */
-    public function GetSessionInfo
-    (
-        int $AExpire = null
-    )
-    {
-        $InitVector = openssl_random_pseudo_bytes( $this -> GetSSLLengthVector() );
-
-        /* Copy of array */
-        $JSON = array_merge( $this -> JSON );
-
-        /* */
-        if( !empty( $AExpire ) )
-        {
-            $JSON[ 'Expire' ] = TMoment :: Create() -> Now() -> Add( $AExpire ) -> Get();
-        }
-
-        $SessionInfo = bin2hex( $InitVector ) . ' ' . bin2hex
-        (
-            openssl_encrypt
+            setcookie
             (
-                json_encode( $JSON ),
-                $this -> GetSSLMethod(),
-                $this -> GetSSLKey(),
-                OPENSSL_RAW_DATA,
-                $InitVector
-            )
-        );
-
-        return (string) $SessionInfo;
-    }
-
-
-
-    /*
-        Fill session object from encripted session information
-    */
-    private function &SetSessionInfo
-    (
-        $ASessionText
-    )
-    {
-        $SessionPart = explode( ' ', $ASessionText );
-
-        if ( count( $SessionPart) > 1 )
-        {
-            $SessionText = openssl_decrypt
-            (
-                hex2bin( $SessionPart[ 1 ]),
-                $this -> GetSSLMethod(),
-                $this -> GetSSLKey(),
-                OPENSSL_RAW_DATA,
-                hex2bin( $SessionPart[ 0 ])
+                self::SESSION_COOKIE,
+                $this -> buildToken(),
+                [
+                    'expires' => 0,
+                    'path' => '/',
+                    'secure' => false,
+                    'httponly' => false,
+                    'samesite' => 'Lax'
+                ]
             );
-            $JSON = json_decode( $SessionText, true );
         }
-        else
-        {
-            $JSON = null;
-        }
-
-        if( ! empty( $JSON ))
-        {
-            $this -> JSON = $JSON;
-        }
-        else
-        {
-            $this -> Clear();
-        }
-
         return $this;
     }
 
 
+
+    /**************************************************************************
+        Operations with user data
+    */
 
     /*
         Read session parameter form $AKey
-     */
-    public function Get
+    */
+    public function get
     (
-        string  $AKey,
-        $ADefault = null
+        array | string $aPath,
+        $aDefault = null
     )
     {
-        if
+        return clValueFromObject
         (
-            array_key_exists( $AKey, $this -> JSON ) &&
-            ! empty( $this -> JSON[ $AKey ] )
-        )
-        {
-            $Result = (string) $this -> JSON[ $AKey ];
-        }
-        else
-        {
-            $Result = $ADefault;
-        }
-        return $Result;
+            $this -> token[ 'd' ],
+            $aPath,
+            $aDefault
+        );
     }
 
 
@@ -257,44 +264,22 @@ class TSession extends TResult
     /*
         Write session parameter
     */
-    public function Set
+    public function set
     (
-        $AKey = null,   /* Key name */
-        $AValue = null  /* Value */
+        /* Key name */
+        $aPath,
+        /* Value */
+        $aValue = null
     )
+    :Session
     {
-        if( !empty( $AKey ))
-        {
-            $this -> JSON[ $AKey ] = $AValue;
-        }
+        clValueToObject
+        (
+            $this -> token[ 'd' ],
+            $aPath,
+            $aValue
+        );
         return $this;
-    }
-
-
-
-    /*
-        Remove key by name
-    */
-    public function Del
-    (
-        $AKey
-    )
-    {
-        if ( array_key_exists( $AKey, $this -> JSON ))
-        {
-            unset( $this -> JSON[ $AKey ]);
-        }
-        return $this;
-    }
-
-
-
-    /*
-        Work with named params
-    */
-    private function SetID($AID)
-    {
-        return $this -> Set( 'ID', $AID );
     }
 
 
@@ -302,9 +287,10 @@ class TSession extends TResult
     /*
         Return the current session ID
     */
-    public function GetID()
+    public function getId()
+    :string
     {
-        return $this -> Get( 'ID' );
+        return $this -> token[ 'i' ];
     }
 
 
@@ -312,162 +298,133 @@ class TSession extends TResult
     /*
         Set site value
     */
-    public function SetExpireAfter
+    public function setExpireAfter
     (
-        int $AValue /* Expare in microsecond from current moment */
+        /* Expare in microsecond from current moment */
+        int $a
     )
+    :Session
     {
-        return $this -> Set( 'Expire', TMoment :: Create() -> Now() -> Add( $AValue ) -> Get() );
+        return $this -> set
+        (
+            't',
+            Moment::create()
+            -> now()
+            -> add( $a )
+            -> get()
+        );
     }
 
 
 
     /*
-        Set site value
+        Set exparation moment
     */
-    public function GetExpireAfter()
+    public function getExpireAfter()
     {
-        return ((float)$this -> Get( 'Expire' )) - TMoment :: Create() -> Now() -> Get();
-    }
-
-
-
-    /*
-    */
-    public function SetDomain( $ADomain )
-    {
-        return $this -> Set( 'Domain', $ADomain );
-    }
-
-
-
-    /*
-    */
-    public function GetDomain( $ADefault = null )
-    {
-        return $this -> Get( 'Domain', $ADefault );
-    }
-
-
-
-    /*
-        Set languager for current session
-    */
-    public function SetLanguage( $AIDLang )
-    {
-        return $this -> Set( 'Language', $AIDLang );
-    }
-
-
-
-    /*
-        Return the language for session
-    */
-    public function GetLanguage( $ADefault = null )
-    {
-        return $this -> Get( 'Language', $ADefault );
-    }
-
-
-
-    /*
-        Set site value
-    */
-    public function SetSite( $ASite )
-    {
-        return $this -> Set( 'Site', $ASite );
-    }
-
-
-
-    /*
-    */
-    public function GetSite( $ADefault = null )
-    {
-        return $this -> Get( 'Site', $ADefault );
+        return ((int) $this -> get( 't' )) - Moment::create() -> now() -> get();
     }
 
 
 
     /*
         Set login for current ssession
-        This function can not be call from project
-        SECURE_SYSTEM
     */
-    public function SetLogin( $ALogin )
+    public function setLogin
+    (
+        /* Session user id */
+        $a
+    )
+    :Session
     {
-        return $this -> Set( 'Login', $ALogin );
+        return $this -> token[ 'u' ] = $a;
     }
 
 
 
     /*
-        Return current login
-        SECURE_SYSTEM
+        Return the current login
      */
-    public function GetLogin( $ADefault )
+    public function getLogin( $aDefault )
+    :string
     {
-        return $this -> Get( 'Login', $ADefault );
+        return $this -> token[ 'u' ] ?? $aDefault;
     }
 
 
 
     /*
+        Set the ssl method encription
     */
-    public function GetSessionJSON()
+    public function setSslMethod( $a )
+    :Session
     {
-        return json_encode( $this -> JSON );
-    }
-
-
-
-    public function SetSSLMethod( $ASSLMethod )
-    {
-        $this -> SSLMethod = $ASSLMethod;
+        $this -> sslMethod = $a;
         return $this;
     }
 
 
 
-    public function GetSSLMethod()
+    /*
+        return the ssl method encription
+    */
+    public function getSslMethod()
+    :string
     {
-        return $this -> SSLMethod;
+        return $this -> sslMethod;
     }
 
 
 
-    public function SetSSLKey( $ASSLKey )
+    public function setSslKey
+    (
+        $a
+    )
+    :Session
     {
-        $this -> SSLKey = $ASSLKey;
+        $this -> sslKey = $a;
         return $this;
     }
 
 
 
-    public function GetSSLKey()
+    public function getSslKey()
+    :string
     {
-        return $this -> SSLKey;
+        return $this -> sslKey;
     }
 
 
 
-    public function SetSSLLengthVector( $ASSLLengthVector )
+    public function setSslLengthVector
+    (
+        /* Ssl lenth vector*/
+        int $a = 16
+    )
+    :Session
     {
-        $this -> SSLLengthVector = $ASSLLengthVector;
+        $this -> sslLengthVector = $a;
         return $this;
     }
 
 
-
-    public function GetSSLLengthVector()
+    /*
+        Return the ssl length vector
+    */
+    public function getSslLengthVector()
+    :int
     {
-        return $this -> SSLLengthVector;
+        return $this -> sslLengthVector;
     }
 
 
 
-    public function GetJSON()
+    /*
+        Return token information
+    */
+    public function getToken()
+    :array
     {
-        return $this -> JSON;
+        return $this -> token;
     }
 }

@@ -25,15 +25,35 @@ namespace catlair;
 
 class Mime
 {
+    /*
+        Baisic content type
+    */
+    const HTML  = 'text/html';
+    const PLAIN = 'text/plain';
+    const JSON  = 'application/json';
+    const TXT   = 'text/plan';
+    const XML   = 'application/xml';
+    const CSS   = 'text/css';
+    const JS    = 'application/javascript';
+    const YAML  = 'application/x-yaml';
+    const SVG   = 'image/svg+xml';
+    const PNG   = 'image/png';
+    const BMP   = 'image/bmp';
+    const JPG   = 'image/jpeg';
+    const GIF   = 'image/gif';
+    const ICO   = 'image/x-icon';
+
+
+
     private static array $mimeTypes =
     [
         /* Images */
-        'svg'  => 'image/svg+xml',
-        'png'  => 'image/png',
-        'jpg'  => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'gif'  => 'image/gif',
-        'bmp'  => 'image/bmp',
+        'svg'  => self::SVG,
+        'png'  => self::PNG,
+        'jpg'  => self::JPG,
+        'jpeg' => self::JPG,
+        'gif'  => self::GIF,
+        'bmp'  => self::BMP,
         'webp' => 'image/webp',
         'ico'  => 'image/vnd.microsoft.icon',
 
@@ -45,17 +65,18 @@ class Mime
         'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'ppt'  => 'application/vnd.ms-powerpoint',
         'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-        'txt'  => 'text/plain',
+        'txt'  => 'text/plan',
         'rtf'  => 'application/rtf',
         'odt'  => 'application/vnd.oasis.opendocument.text',
 
         /* Веб */
-        'html' => 'text/html',
-        'htm'  => 'text/html',
-        'css'  => 'text/css',
-        'js'   => 'application/javascript',
-        'json' => 'application/json',
-        'xml'  => 'application/xml',
+        'html' => self::HTML,
+        'htm'  => self::HTML,
+        'css'  => self::CSS,
+        'js'   => self::JS,
+        'json' => self::JSON,
+        'yaml' => self::YAML,
+        'xml'  => self::XML,
         'rss'  => 'application/rss+xml',
 
         /* Архивы */
@@ -81,13 +102,20 @@ class Mime
         'bin'  => 'application/octet-stream',
     ];
 
-    public static function mimeByExt
+
+
+    /*
+        Return mime from file extention
+    */
+    public static function fromExt
     (
+        /* file extention */
         string $ext
     )
     : string
     {
-        $ext = strtolower(ltrim($ext, '.'));
-        return self::$mimeTypes[$ext] ?? 'application/octet-stream';
+        return
+        self::$mimeTypes[ strtolower( $ext ) ]
+        ?? 'application/octet-stream';
     }
 }

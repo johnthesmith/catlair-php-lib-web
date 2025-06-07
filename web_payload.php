@@ -35,8 +35,13 @@ namespace catlair;
 /* Load web application library */
 require_once LIB . '/web/web.php';
 
+/* Load mime conversion library */
+require_once LIB . '/web/mime.php';
+
 /* Load hub payload */
 require_once LIB . '/app/hub.php';
+
+require_once LIB . '/core/url.php';
 
 
 
@@ -49,7 +54,7 @@ class WebPayload extends Hub
     private $content = '';
 
     /* Content type of the payload */
-    private $contentType = Web::HTML;
+    private $contentType = null;
 
     /* Filename of the returned content */
     private $contentFileName = '';
@@ -158,33 +163,33 @@ class WebPayload extends Hub
 
 
 
-//    /*
-//        Запуск метода удаленной полезной нагрузки через REST
-//        c использованием прямой ссылки и таймаута исполднения запроса
-//    */
-//    public function summonOnHost
-//    (
-//        /* Имя вызываемой полезной нагрузки */
-//        string  $APayloadName,
-//        /* Имя метода */
-//        string  $APayloadMethod,
-//        /* Дополнительные аргументы */
-//        array   $AArguments,
-//        /* Имя конфигураци с настройками */
-//        string  $AURL,
-//        /* Имя конфигураци с настройками */
-//        string  $ARequestTimeoutMls,
-//        /* Тип исполнтеля dispatcher или preceptor */
-//        string $AType = 'dispatcher'
-//    )
-//    {
+    /*
+        Запуск метода удаленной полезной нагрузки через REST
+        c использованием прямой ссылки и таймаута исполднения запроса
+    */
+    public function summon
+    (
+        /* Имя вызываемой полезной нагрузки */
+        string  $APayloadName,
+        /* Имя метода */
+        string  $APayloadMethod,
+        /* Дополнительные аргументы */
+        array   $AArguments,
+        /* Имя конфигураци с настройками */
+        string  $AURL,
+        /* Имя конфигураци с настройками */
+        string  $ARequestTimeoutMls,
+        /* Тип исполнтеля dispatcher или preceptor */
+        string $AType = 'dispatcher'
+    )
+    {
 //        /* Формирование ссылки */
 //        $callUrl = URL::Create()
 //        -> parse( $AURL )
 //        -> setPath([ 'api', $AType, 'exec' ])
 //        -> clearParams()
 //        ;
-//
+
 //        /* Исполнение запроса */
 //        $bot = WebBot::create( $this -> getLog() )
 //        -> setRequestTimeoutMls( $ARequestTimeoutMls )
@@ -218,7 +223,7 @@ class WebPayload extends Hub
 //                $answer = $bot -> getAnswer();
 //            }
 //        }
-//
+
 //        /* Возврат результата */
 //        $this -> setContentType( $bot -> getContentType());
 //        if
@@ -239,60 +244,8 @@ class WebPayload extends Hub
 //            $this -> setContent( $answer );
 //        }
 //
-//        return $this;
-//    }
-
-
-
-//    /*
-//        Запуск метода удаленной полезной нагрузки через REST протокол
-//        c использованием конфигуратора
-//    */
-//    public function summon
-//    (
-//        /* Имя вызываемой полезной нагрузки */
-//        string  $APayloadName,
-//        /* Имя метода */
-//        string  $APayloadMethod,
-//        /* Дополнительные аргументы */
-//        array   $AArguments = [],
-//        /* Имя конфигураци с настройками */
-//        string  $AConfig    = 'default'
-//    )
-//    {
-//        /* Получение конфигурации удаленного сервера */
-//        $config =
-//        $this
-//        -> getApp()
-//        -> getParam([ 'web', 'remotePayloads', $AConfig ]);
-//
-//        if( empty( $config ))
-//        {
-//            $this -> setResult
-//            (
-//                'PayloadRemoteConfigIsEmpty',
-//                [
-//                    'congfig'   => $AConfig,
-//                    'payload'   => $APayloadName,
-//                    'method'    => $APayloadMethod
-//                ]
-//            );
-//        }
-//        else
-//        {
-//            $this -> summonOnHost
-//            (
-//                $APayloadName,
-//                $APayloadMethod,
-//                $AArguments,
-//                clValueFromObject( $config, 'url', '127.0.0.1' ),
-//                clValueFromObject( $config, 'requestTimeoutMls', 1000 ),
-//                clValueFromObject( $config, 'type', 'dispatcher' )
-//            );
-//        }
-//
-//        return $this;
-//    }
+        return $this;
+    }
 
 
 
@@ -556,9 +509,14 @@ class WebPayload extends Hub
         return $result;
     }
 
+
+
+    /*
+        Return application main url object
+    */
+    public function getUrl()
+    :Url
+    {
+        return $this -> getApp() -> getUrl();
+    }
 }
-
-
-
-
-

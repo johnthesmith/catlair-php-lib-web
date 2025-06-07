@@ -45,38 +45,21 @@ require_once LIB . '/core/parse.php';
 /* Application libraries */
 require_once LIB . '/app/engine.php';
 require_once LIB . '/app/payload.php';
+require_once LIB . '/web/session.php';
+require_once LIB . '/web/mime.php';
 
 
 
 class Web extends Engine
 {
-    /*
-        Baisic content type
-    */
-    const HTML  = 'text/html';
-    const PLAIN = 'text/plain';
-    const JSON  = 'application/json';
-    const XML   = 'application/xml';
-    const CSS   = 'text/css';
-    const JS    = 'application/javascript';
-    const YAML  = 'application/x-yaml';
-    const SVG   = 'image/svg+xml';
-    const PNG   = 'image/png';
-    const JPG   = 'image/jpeg';
-    const GIF   = 'image/gif';
-    const ICO   = 'image/x-icon';
-
-
-
-    /*
-        Main command directive names
-    */
+    /* Session */
+    private Session | null  $session    = null;
     /* Current url */
-    private $url = null;
+    private Url | null      $url        = null;
     /* Current content */
-    private array $context = [];
-    /**/
-    private array $path = [];
+    private array           $context    = [];
+    /* URI path */
+    private array           $path       = [];
 
 
 
@@ -86,7 +69,9 @@ class Web extends Engine
     static public function create()
     :self
     {
-        return new Web();
+        $result = new Web();
+        $result -> session = Session::create( $result );
+        return $result;
     }
 
 
@@ -114,9 +99,9 @@ class Web extends Engine
             $this -> url -> fromRequest();
 
             $logsPathPrefix =
-            $_SERVER['REMOTE_ADDR'] .
+            $_SERVER[ 'REMOTE_ADDR' ] .
             '_' .
-            md5( $_SERVER['HTTP_USER_AGENT'] );
+            md5( $_SERVER[ 'HTTP_USER_AGENT' ]);
 
             /* Switch log to file */
             $this
@@ -167,7 +152,6 @@ class Web extends Engine
         /*
             Read main config arguments
         */
-
         if
         (
             empty( $this -> url -> getPath()) &&
@@ -175,24 +159,20 @@ class Web extends Engine
         )
         {
             /* Set default path */
-            $this -> url -> setUri
-            (
-                $this -> getParam([ 'web', 'default', 'uri' ], '' )
-            );
+            $this -> setDefaultUrl();
         }
 
         /* Read default context from config */
         $this -> setContext
         (
-            $this -> getParam([ 'web', 'default', 'context'], [] )
+            $this -> getParam([ 'web', 'default', 'context' ], [] )
         );
 
-        /*
-            Build route
-        */
+        /* Open session */
+        $this -> session -> open();
 
-        /* Retrive url path */
-        $this -> path = $this -> url -> getPath();
+        /* Reset file name */
+        $contentFileName = null;
 
         /*
             Run payload
@@ -202,7 +182,11 @@ class Web extends Engine
         ob_start();
 
         /* Create and run web payload */
-        $payload = Payload::create( $this, implode( '/', $this -> path ));
+        $payload = Payload::create
+        (
+            $this,
+            implode( '/', $this -> url -> getPath() )
+        );
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -212,8 +196,7 @@ class Web extends Engine
         {
             /* For non empty buffer ... */
             $content = $rawOutput;
-            $contentType = 'text/plain; charset=utf-8';
-            $contentFileName = null;
+            $contentType = Mime::TXT;
         }
         else
         {
@@ -229,21 +212,24 @@ class Web extends Engine
                 $contentType
                 = method_exists( $payload, 'getContentType' )
                 ? $payload -> getContentType()
-                : self::HTML;
+                : Mime::HTML;
 
-                $contentFileName = null;
+                /* Get content type from payload*/
+                $contentFileName
+                = method_exists( $payload, 'getContentFileName' )
+                ? $payload -> getContentFileName()
+                : null;
             }
             else
             {
                 /* Return error */
                 $content = $payload -> getResultAsArray();
-                $contentType = self::JSON;
-                $contentFileName = null;
+                $contentType = Mime::JSON;
             }
 
             switch( $contentType )
             {
-                case self::JSON:
+                case Mime::JSON:
                     $content = json_encode
                     (
                         $content,
@@ -252,18 +238,24 @@ class Web extends Engine
                         JSON_PRETTY_PRINT
                     );
                 break;
-                case self::YAML:
+                case Mime::YAML:
                     $content = yaml_emit( $content );
-                    $contentFileName = 'content.yaml';
+                    if( empty( $contentFileName ))
+                    {
+                        $contentFileName = 'file.yaml';
+                    }
                 break;
             }
         }
+
+        /* Send session */
+        $this -> session -> send();
 
         /* Set content type header */
         header( 'Content-Type: ' . $contentType );
 
         /* Set content disposition */
-        if( !empty( $contentDisposition ))
+        if( !empty( $contentFileName ))
         {
             header
             (
@@ -277,7 +269,9 @@ class Web extends Engine
         /* Final out put */
         if( $this -> isCli() )
         {
-            $this -> getLog() -> prn( $content );
+            $this -> getLog() -> line( $contentType ) -> headerHide();
+            print_r( $content . PHP_EOL );
+            $this -> getLog() -> headerRestore() -> line();
         }
         else
         {
@@ -300,33 +294,14 @@ class Web extends Engine
         Utils
     */
 
-    /*
-        Return template content
-    */
-    public function getTemplate
-    (
-        string  $aId         = null,
-        array   $aContext    = []
-    )
+    public function setDefaultUrl()
     {
-        $aContext = empty( $aContext ) ? $this -> getContext() : [];
-        $file = $this -> getContentFileAny( $aId, $aContext );
-
-        if( !empty( $file ))
-        {
-            $result = @file_get_contents( $file );
-        }
-        else
-        {
-            $result = 'Template ' .
-            $aId .
-            ' not found for context ' .
-            implode( '-', $aContext );
-        }
-        return $result;
+        $this -> url -> setUri
+        (
+            $this -> getParam([ 'web', 'default', 'uri' ], '' )
+        );
+        return $this;
     }
-
-
 
     /**************************************************************************
         Setters and getters
@@ -342,22 +317,36 @@ class Web extends Engine
     }
 
 
+
     /*
         Set curernt contex
     */
     public function getContext()
+    :array
     {
         return $this -> context;
     }
 
 
+    /*
+        Return application session
+    */
+    public function getSession()
+    :Session
+    {
+        return $this -> session;
+    }
+
+
 
     /*
-        Return current url path
+        Return application main url object
     */
-    public function getPath()
+    public function getUrl()
+    :Url
     {
-        return $this -> path;
+        return $this -> url;
     }
+
 
 }
