@@ -144,6 +144,9 @@ class WebPayload extends Hub
         array   $aContext    = []
     )
     {
+        /* Define result */
+        $result = '';
+
         $aContext = empty( $aContext ) ? $this -> getContext() : [];
         $file = $this -> getContentFileAny( $aId, $aContext );
 
@@ -153,10 +156,16 @@ class WebPayload extends Hub
         }
         else
         {
-            $result = 'Template ' .
-            $aId .
-            ' not found for context ' .
-            implode( '-', $aContext );
+            $this -> setResult
+            (
+                'template-not-found',
+                [
+                    'id' => $aId,
+                    'context' => $aContext
+                ]
+            );
+
+            $this -> getApp() -> resultWarning( $this );
         }
         return $result;
     }
@@ -250,42 +259,8 @@ class WebPayload extends Hub
 
 
     /**************************************************************************
-        File utils
+        Utils
     */
-
-    /*
-        Получение пути для файловой свалки сайта как то логи кэши и прочее
-        Вебсервер должен обладать правами записи в указанную папку
-    */
-    public function getDumpPath
-    (
-        /* Локальный путь внутри сайта относительно возвращаемого пути */
-        string $aLocal  = ''
-    )
-    {
-        return $this -> getRwPath
-        (
-            'dump' . clLocalPath( $aLocal )
-        );
-    }
-
-
-
-    /*
-        Получение путей журналов
-    */
-    public function getLogPath
-    (
-        /* Локальный путь внутри сайта относительно возвращаемого пути */
-        string $aLocal  = ''
-    )
-    {
-        return
-        $this -> getDumpPath
-        (
-            'log' . clLocalPath( $aLocal )
-        );
-    }
 
 
 
@@ -422,7 +397,7 @@ class WebPayload extends Hub
     )
     {
         return
-        $this -> getRoPath
+        $this -> getRoPublicPath
         (
             'content' . clLocalPath( $aLocal ),
             $aProject
@@ -499,6 +474,11 @@ class WebPayload extends Hub
                     $aContext,
                     $projectPath
                 );
+                /* Log information */
+                $this -> getLog()
+                -> trace( 'Looking for content' )
+                -> param( 'file', $file );
+                /* Get real path */
                 $result = realpath( $file );
                 if( !empty( $result ))
                 {
