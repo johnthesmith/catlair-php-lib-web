@@ -60,7 +60,8 @@ class Web extends Engine
     private array           $context    = [];
     /* URI path */
     private array           $path       = [];
-
+    /* Http headers accumulator */
+    private array           $headers    = [];
 
 
     /*
@@ -116,8 +117,7 @@ class Web extends Engine
                     '_',
                     $this -> url -> toString()
                 )
-            ) -> warning('asd') -> lineEnd();
-            ;
+            );
         }
         else
         {
@@ -129,6 +129,21 @@ class Web extends Engine
         }
 
         return $this;
+    }
+
+
+
+    /*
+        Web application on config event
+        Append GET, POST, COOKIE params after base config
+    */
+    public function onConfig()
+    :self
+    {
+        return $this
+        -> appendParams( $_GET )
+        -> appendParams( $_POST )
+        -> appendParams( $_COOKIE );
     }
 
 
@@ -181,12 +196,27 @@ class Web extends Engine
         /* Buffers on. Preven all output for client */
         ob_start();
 
+
         /* Create and run web payload */
         $payload = Payload::create
         (
             $this,
-            implode( '/', $this -> url -> getPath() )
+            $this -> url -> getPath()[ 0 ] ?? ''
         );
+
+        if( $payload -> isOk() )
+        {
+            $method = $this -> url -> getPath()[ 1 ] ?? '';
+            $query = is_array( $this -> url -> getParams())
+    		? $this -> url -> getParams()
+    		: [];
+
+            if( !empty( $method ))
+            {
+                $payload -> call( $method, $query );
+            }
+        }
+
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -252,18 +282,24 @@ class Web extends Engine
         $this -> session -> send();
 
         /* Set content type header */
-        header( 'Content-Type: ' . $contentType );
+        $this -> addHeader( 'Content-Type: ' . $contentType );
 
         /* Set content disposition */
         if( !empty( $contentFileName ))
         {
-            header
+            $this -> addHeader
             (
                 'Content-Disposition: attachment; filename=' .
                 '"' .
                 $contentFileName .
                 '"'
             );
+        }
+
+        /* Apply accumulated headers */
+        foreach ( $this -> getHeaders() as $header )
+        {
+            header( $header );
         }
 
         /* Final out put */
@@ -302,6 +338,37 @@ class Web extends Engine
         );
         return $this;
     }
+
+
+
+    /*
+        Add header to accumulator
+    */
+    public function addHeader
+    (
+        string $header,
+        bool $replace = true
+    )
+    :void
+    {
+        if( $replace || !isset( $this -> headers[ $header ]))
+        {
+            $this -> headers[ $header ] = true;
+            header( $header, $replace );
+        }
+    }
+
+
+
+    /*
+        Get all accumulated headers
+    */
+    public function getHeaders()
+    : array
+    {
+        return array_keys( $this->headers );
+    }
+
 
     /**************************************************************************
         Setters and getters

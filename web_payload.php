@@ -397,7 +397,7 @@ class WebPayload extends Hub
     )
     {
         return
-        $this -> getRoPublicPath
+        $this -> getRoPrivatePath
         (
             'content' . clLocalPath( $aLocal ),
             $aProject
@@ -477,6 +477,93 @@ class WebPayload extends Hub
                 /* Log information */
                 $this -> getLog()
                 -> trace( 'Looking for content' )
+                -> param( 'file', $file );
+                /* Get real path */
+                $result = realpath( $file );
+                if( !empty( $result ))
+                {
+                    break;
+                }
+            }
+        }
+        return $result;
+    }
+
+
+
+    /*
+        Получение папки файлов доступных для скачивания для проекта
+    */
+    public function getFilePath
+    (
+        string $aLocal = '',
+        array $aContext = [],
+        string $aProject = null
+    )
+    {
+        $context = implode
+        (
+            '-',
+            empty( $aContext ) ? $this -> getContext() : $aContext
+        );
+
+        return
+        $this -> getRoPublicPath
+        (
+            'file/' . $context . clLocalPath( $aLocal ),
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение пути файла
+    */
+    public function getFile
+    (
+        string $aIdFile     = null,
+        array $aContext     = [],
+        string $aProject    = null,
+        string $aLocal      = ''
+    )
+    {
+        return $this -> getFilePath
+        (
+            $aIdFile . clLocalPath( $aLocal ),
+            $aContext,
+            $aProject
+        );
+    }
+
+
+
+    /*
+        Получение пути любого доступного файла
+    */
+    public function getFileAny
+    (
+        string  $aIdFile     = null,
+        array   $aContext     = []
+    )
+    {
+        /* Запрос перечня проектов */
+        $projects = $this -> getApp() -> getProjects();
+
+        /* Обход проектов для запроса пути */
+        foreach( $projects as $projectPath )
+        {
+            if( !empty( $projectPath ))
+            {
+                $file = $this -> getFile
+                (
+                    $aIdFile,
+                    $aContext,
+                    $projectPath
+                );
+                /* Log information */
+                $this -> getLog()
+                -> trace( 'Looking for file' )
                 -> param( 'file', $file );
                 /* Get real path */
                 $result = realpath( $file );

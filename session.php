@@ -33,6 +33,7 @@ class Session extends Result
 {
     const SESSION_LOCAL_HOST    = 'localhost';
     const SESSION_COOKIE        = 'session';
+    const USER_GUEST            = 'guest';
 
     private Web | null  $app    = null;
     private $sslMethod          = '';
@@ -109,8 +110,8 @@ class Session extends Result
         /* Define empy token session */
         $this -> token =
         [
-            'i' => clUUID(),
-            'u' => null,
+            'i' => clBase64ID(),
+            'u' => self::USER_GUEST,
             't' => null,
             'h' => $this -> app -> isCLI()
             ? self::SESSION_LOCAL_HOST
@@ -337,7 +338,8 @@ class Session extends Result
     )
     :Session
     {
-        return $this -> token[ 'u' ] = $a;
+        $this -> token[ 'u' ] = $a;
+        return $this;
     }
 
 
@@ -345,7 +347,10 @@ class Session extends Result
     /*
         Return the current login
      */
-    public function getLogin( $aDefault )
+    public function getLogin
+    (
+        $aDefault = self::USER_GUEST
+    )
     :string
     {
         return $this -> token[ 'u' ] ?? $aDefault;
@@ -426,5 +431,15 @@ class Session extends Result
     :array
     {
         return $this -> token;
+    }
+
+
+
+    /*
+        Return true if user is guest
+    */
+    public function isGuest()
+    {
+        return $this -> getLogin() == self::USER_GUEST;
     }
 }

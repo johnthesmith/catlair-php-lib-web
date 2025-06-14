@@ -74,28 +74,23 @@ class WebBuilder extends Builder
             /* Call payload */
             case 'payload':
             {
-                if( $this -> IsOk())
+                if( $this -> isOk())
                 {
-                    $Payload = (string) ( $AValue ? $AValue : $Params[ 'payload' ]);
-                    $Method = (string) $Params[ 'method' ];
-                    if( !empty( $Payload ))
+                    $payload = (string) ( $AValue ? $AValue : ( $Params[ 'payload' ] ?? '' ));
+                    $method = (string) $Params[ 'method' ] ?? '';
+
+                    /* Создание полезной нагрузки */
+                    $payload = WebPayload::create( $this -> getApp(), $payload );
+                    if( $payload -> isOk() )
                     {
-                        if( !empty( $Method ))
+                        $payload -> run( $method, ((array) $Params )[ '@attributes' ] );
+                        if( $payload -> isOk() )
                         {
-                            /* Создание полезной нагрузки */
-                            $payload = WebPayload::create( $this -> Web, $Payload );
-                            $payload -> run( $Method, ((array) $Params )[ '@attributes' ] );
-                            $payload -> resultTo( $this );
-                            if( $payload -> isOk() )
-                            {
-                                $AContent = $payload -> getContent();
-                            }
-                        }
-                        else
-                        {
-                            $this -> setResult( 'MethodIsEmpty', [ 'PayloadName' => $PayloadName, 'Method' => $Method ] ) -> resultWarning();
+                            $AContent = $payload -> getContent();
                         }
                     }
+
+                    $payload -> resultTo( $this );
                 }
             }
         }
@@ -124,6 +119,6 @@ class WebBuilder extends Builder
 
     public function getApp()
     {
-        return $this -> getOwner();
+        return $this -> getOwner() -> getApp();
     }
 }
