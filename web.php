@@ -184,39 +184,47 @@ class Web extends Engine
         );
 
         /* Open session */
-        $this -> session -> open();
-
-        /* Reset file name */
-        $contentFileName = null;
-
-        /*
-            Run payload
-        */
+        Payload::create( $this, 'session-manager', 'web' )
+        -> call( 'initSession' )
+        -> resultTo( $this );
 
         /* Buffers on. Preven all output for client */
         ob_start();
 
-
-        /* Create and run web payload */
-        $payload = Payload::create
-        (
-            $this,
-            $this -> url -> getPath()[ 0 ] ?? ''
-        );
-
-        if( $payload -> isOk() )
+        if( $this -> isOk() )
         {
-            $method = $this -> url -> getPath()[ 1 ] ?? '';
-            $query = is_array( $this -> url -> getParams())
-    		? $this -> url -> getParams()
-    		: [];
+            $this -> session -> open();
 
-            if( !empty( $method ))
+            /* Reset file name */
+            $contentFileName = null;
+
+            /*
+                Run payload
+            */
+
+            /* Create and run web payload */
+            $payload = Payload::create
+            (
+                $this,
+                $this -> url -> getPath()[ 0 ] ?? '',
+                'api'
+            )
+            -> resultTo( $this );
+
+
+            if( $this -> isOk() )
             {
-                $payload -> call( $method, $query );
+                $method = $this -> url -> getPath()[ 1 ] ?? '';
+                $query = is_array( $this -> url -> getParams())
+        		? $this -> url -> getParams()
+        		: [];
+
+                if( !empty( $method ))
+                {
+                    $payload -> call( $method, $query );
+                }
             }
         }
-
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -230,7 +238,7 @@ class Web extends Engine
         }
         else
         {
-            if( $payload -> isOk() )
+            if( $this -> isOk() )
             {
                 /* Get content from payload */
                 $content
@@ -253,29 +261,29 @@ class Web extends Engine
             else
             {
                 /* Return error */
-                $content = $payload -> getResultAsArray();
+                $content = $this -> getResultAsArray();
                 $contentType = Mime::JSON;
             }
+        }
 
-            switch( $contentType )
-            {
-                case Mime::JSON:
-                    $content = json_encode
-                    (
-                        $content,
-                        JSON_UNESCAPED_SLASHES |
-                        JSON_UNESCAPED_UNICODE |
-                        JSON_PRETTY_PRINT
-                    );
-                break;
-                case Mime::YAML:
-                    $content = yaml_emit( $content );
-                    if( empty( $contentFileName ))
-                    {
-                        $contentFileName = 'file.yaml';
-                    }
-                break;
-            }
+        switch( $contentType )
+        {
+            case Mime::JSON:
+                $content = json_encode
+                (
+                    $content,
+                    JSON_UNESCAPED_SLASHES |
+                    JSON_UNESCAPED_UNICODE |
+                    JSON_PRETTY_PRINT
+                );
+            break;
+            case Mime::YAML:
+                $content = yaml_emit( $content );
+                if( empty( $contentFileName ))
+                {
+                    $contentFileName = 'file.yaml';
+                }
+            break;
         }
 
         /* Send session */

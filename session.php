@@ -39,6 +39,8 @@ class Session extends Result
     private $sslMethod          = '';
     private $sslKey             = '';
     private $sslLengthVector    = 16;
+    /* Cookie exparation time in seconds */
+    private $ttlSec    = 0;
 
     /*
         Private declration
@@ -226,7 +228,7 @@ class Session extends Result
                 self::SESSION_COOKIE,
                 $this -> buildToken(),
                 [
-                    'expires' => 0,
+                    'expires' =>  time() + $this -> getTtlSec(),
                     'path' => '/',
                     'secure' => false,
                     'httponly' => false,
@@ -334,7 +336,7 @@ class Session extends Result
     public function setLogin
     (
         /* Session user id */
-        $a
+        $a = self::USER_GUEST
     )
     :Session
     {
@@ -385,7 +387,7 @@ class Session extends Result
     (
         $a
     )
-    :Session
+    :self
     {
         $this -> sslKey = $a;
         return $this;
@@ -406,7 +408,7 @@ class Session extends Result
         /* Ssl lenth vector*/
         int $a = 16
     )
-    :Session
+    :self
     {
         $this -> sslLengthVector = $a;
         return $this;
@@ -431,6 +433,33 @@ class Session extends Result
     :array
     {
         return $this -> token;
+    }
+
+
+
+    /*
+        Return session exparation time in seconds
+    */
+    public function getTtlSec()
+    :int
+    {
+        return $this -> ttlSec;
+    }
+
+
+
+    /*
+        Set session exparation time in seconds
+    */
+    public function setTtlSec
+    (
+        /* time to live in seconds */
+        $a
+    )
+    :self
+    {
+        $this -> ttlSec = $a;
+        return $this;
     }
 
 

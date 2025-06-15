@@ -31,15 +31,14 @@ namespace catlair;
 */
 
 
-
-/* Load web application library */
-require_once LIB . '/web/web.php';
-
-/* Load mime conversion library */
-require_once LIB . '/web/mime.php';
-
 /* Load hub payload */
 require_once LIB . '/app/hub.php';
+/* Load web application library */
+require_once LIB . '/web/web.php';
+/* Load mime conversion library */
+require_once LIB . '/web/mime.php';
+/* Load web builder */
+require_once LIB . '/web/web_builder.php';
 
 require_once LIB . '/core/url.php';
 
@@ -299,6 +298,36 @@ class WebPayload extends Hub
         return $result;
     }
 
+
+
+    /**************************************************************************
+        Protected utility methods
+    */
+
+
+    /*
+        Content builder
+    */
+    protected function buildContent
+    (
+        array $aArgs = []
+    )
+    {
+        /* Create builder object */
+        $builder = WebBuilder::create( $this );
+
+        $builder
+        -> setContent( $this -> getContent())
+        -> setContentType( $this -> getContentType() )
+        -> setIncome( clArrayAppend( $aArgs, $this -> getApp() -> getParams()))
+        -> build()
+        -> resultTo( $this )
+        ;
+
+        return $this
+        -> setContentType( $builder -> getContentType())
+        -> setContent( $builder -> getContent());
+    }
 
 
 
@@ -586,4 +615,5 @@ class WebPayload extends Hub
     {
         return $this -> getApp() -> getUrl();
     }
+
 }

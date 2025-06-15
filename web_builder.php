@@ -80,7 +80,7 @@ class WebBuilder extends Builder
                     $method = (string) $Params[ 'method' ] ?? '';
 
                     /* Создание полезной нагрузки */
-                    $payload = WebPayload::create( $this -> getApp(), $payload );
+                    $payload = WebPayload::create( $this -> getApp(), $payload, 'api' );
                     if( $payload -> isOk() )
                     {
                         $payload -> run( $method, ((array) $Params )[ '@attributes' ] );
