@@ -162,8 +162,9 @@ class WebPayload extends Hub
                     'id' => $aId,
                     'context' => $aContext
                 ]
-            );
-
+            )
+            -> backtrace()
+            ;
             $this -> getApp() -> resultWarning( $this );
         }
         return $result;

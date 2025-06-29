@@ -184,8 +184,8 @@ class Web extends Engine
         );
 
         /* Open session */
-        Payload::create( $this, 'session-manager', 'web' )
-        -> call( 'initSession' )
+        $payload = Payload::create( $this, 'flow', 'internal' )
+        -> call( 'init' )
         -> resultTo( $this );
 
         /* Buffers on. Preven all output for client */
@@ -208,9 +208,7 @@ class Web extends Engine
                 $this,
                 $this -> url -> getPath()[ 0 ] ?? '',
                 'api'
-            )
-            -> resultTo( $this );
-
+            );
 
             if( $this -> isOk() )
             {
@@ -225,6 +223,11 @@ class Web extends Engine
                 }
             }
         }
+
+
+        /* Postprocessing */
+        $payload = $payload -> mutate( 'flow' ) -> call( 'postprocessing' );
+
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -261,7 +264,7 @@ class Web extends Engine
             else
             {
                 /* Return error */
-                $content = $this -> getResultAsArray();
+                $content = $this -> getResultHistory();
                 $contentType = Mime::JSON;
             }
         }

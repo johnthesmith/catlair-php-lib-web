@@ -112,7 +112,10 @@ class WebBuilder extends Builder
     :string
     {
         /* Call web pallication */
-        return $this -> getOwner() -> getTemplate( $AID, $aContext );
+        $result = $this -> getOwner() -> getTemplate( $AID, $aContext );
+        $this -> getOwner() -> resultTo( $this );
+
+        return $result;
     }
 
 
