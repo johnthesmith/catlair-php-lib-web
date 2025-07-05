@@ -71,10 +71,12 @@ class WebPayload extends Hub
     public function mutate
     (
         /* Имя класса в который необходимо мутировать */
-        string $aPayloadName
+        string $aPayloadName,
+        /* Caller */
+        string $aCaller = null
     )
     {
-        $result = parent::mutate( $aPayloadName );
+        $result = parent::mutate( $aPayloadName, $aCaller );
 
         /* Перенос контента */
         if( method_exists( $result, 'setContent' ))
@@ -487,7 +489,7 @@ class WebPayload extends Hub
     public function getContentFileAny
     (
         string  $aIdFile     = null,
-        array   $aContext     = []
+        array | null  $aContext     = []
     )
     {
         /* Запрос перечня проектов */
@@ -496,6 +498,9 @@ class WebPayload extends Hub
         /* Обход проектов для запроса пути */
         foreach( $projects as $projectPath )
         {
+
+//TODO обдумать как ивзелвать контент из DEFAULT контекста если не найден в запрошенном
+//возмно нужен массив контектов умолчальных
             if( !empty( $projectPath ))
             {
                 $file = $this -> getContentFile

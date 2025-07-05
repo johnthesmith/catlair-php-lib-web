@@ -180,7 +180,7 @@ class Session extends Result
     :string
     {
         /* Copy of array */
-        $token = json_decode( json_encode( $this->token ), true);
+        $token = json_decode( json_encode( $this -> getToken() ), true);
 
         if( !empty( $aExpire ))
         {

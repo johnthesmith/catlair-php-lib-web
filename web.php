@@ -193,7 +193,9 @@ class Web extends Engine
 
         if( $this -> isOk() )
         {
+            /* Open session object */
             $this -> session -> open();
+            $this -> setContext( $this -> getSession() -> get( 'context' ));
 
             /* Reset file name */
             $contentFileName = null;
@@ -203,31 +205,22 @@ class Web extends Engine
             */
 
             /* Create and run web payload */
-            $payload = Payload::create
+            $payload = $payload -> mutate
             (
-                $this,
                 $this -> url -> getPath()[ 0 ] ?? '',
                 'api'
-            );
-
-            if( $this -> isOk() )
-            {
-                $method = $this -> url -> getPath()[ 1 ] ?? '';
-                $query = is_array( $this -> url -> getParams())
+            )
+            -> call
+            (
+                $this -> url -> getPath()[ 1 ] ?? '',
+                is_array( $this -> url -> getParams())
         		? $this -> url -> getParams()
-        		: [];
-
-                if( !empty( $method ))
-                {
-                    $payload -> call( $method, $query );
-                }
-            }
+        		: []
+            );
         }
 
-
         /* Postprocessing */
-        $payload = $payload -> mutate( 'flow' ) -> call( 'postprocessing' );
-
+        $payload = $payload -> mutate( 'flow', 'internal' ) -> call( 'postprocessing' );
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -241,7 +234,7 @@ class Web extends Engine
         }
         else
         {
-            if( $this -> isOk() )
+            if( $payload -> isOk() )
             {
                 /* Get content from payload */
                 $content
@@ -260,11 +253,12 @@ class Web extends Engine
                 = method_exists( $payload, 'getContentFileName' )
                 ? $payload -> getContentFileName()
                 : null;
+
             }
             else
             {
                 /* Return error */
-                $content = $this -> getResultHistory();
+                $content = $payload -> getResultHistory();
                 $contentType = Mime::JSON;
             }
         }
@@ -386,10 +380,17 @@ class Web extends Engine
     */
     public function setContext
     (
-        array $a
+        array | null $a
     )
     {
-        sort( $a );
+        if( $a == null )
+        {
+            $a = [];
+        }
+        else
+        {
+            sort( $a );
+        }
         $this -> context = $a;
         return $this;
     }
