@@ -53,15 +53,17 @@ require_once LIB . '/web/mime.php';
 class Web extends Engine
 {
     /* Session */
-    private Session | null  $session    = null;
+    private Session | null  $session            = null;
     /* Current url */
-    private Url | null      $url        = null;
-    /* Current content */
-    private array           $context    = [];
+    private Url | null      $url                = null;
+    /* Current context */
+    private string          $context            = '';
+    /* Default failback contexts list */
+    private array           $defaultContexts    = [ 'default' ];
     /* URI path */
-    private array           $path       = [];
+    private array           $path               = [];
     /* Http headers accumulator */
-    private array           $headers    = [];
+    private array           $headers            = [];
 
 
     /*
@@ -178,24 +180,24 @@ class Web extends Engine
         }
 
         /* Read default context from config */
-        $this -> setContext
+        $this -> setDefaultContexts
         (
-            $this -> getParam([ 'web', 'default', 'context' ], [] )
+            $this -> getParam([ 'web', 'default', 'contexts' ], [ 'default' ])
         );
+
+        /* Buffers on. Preven all output for client */
+        ob_start();
 
         /* Open session */
         $payload = Payload::create( $this, 'flow', 'internal' )
         -> call( 'init' )
         -> resultTo( $this );
 
-        /* Buffers on. Preven all output for client */
-        ob_start();
-
         if( $this -> isOk() )
         {
             /* Open session object */
             $this -> session -> open();
-            $this -> setContext( $this -> getSession() -> get( 'context' ));
+            $this -> setContext( (string) $this -> getSession() -> get( 'context' ));
 
             /* Reset file name */
             $contentFileName = null;
@@ -203,7 +205,6 @@ class Web extends Engine
             /*
                 Run payload
             */
-
             /* Create and run web payload */
             $payload = $payload -> mutate
             (
@@ -220,7 +221,9 @@ class Web extends Engine
         }
 
         /* Postprocessing */
-        $payload = $payload -> mutate( 'flow', 'internal' ) -> call( 'postprocessing' );
+        $payload = $payload
+        -> mutate( 'flow', 'internal' )
+        -> call( 'postprocessing' );
 
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
@@ -253,7 +256,6 @@ class Web extends Engine
                 = method_exists( $payload, 'getContentFileName' )
                 ? $payload -> getContentFileName()
                 : null;
-
             }
             else
             {
@@ -375,22 +377,16 @@ class Web extends Engine
     }
 
 
+
     /**************************************************************************
         Setters and getters
     */
     public function setContext
     (
-        array | null $a
+        string $a
     )
+    :self
     {
-        if( $a == null )
-        {
-            $a = [];
-        }
-        else
-        {
-            sort( $a );
-        }
         $this -> context = $a;
         return $this;
     }
@@ -401,10 +397,36 @@ class Web extends Engine
         Set curernt contex
     */
     public function getContext()
-    :array
+    :string
     {
         return $this -> context;
     }
+
+
+
+    /*
+        Set default contexts list
+    */
+    public function setDefaultContexts
+    (
+        array $a
+    )
+    {
+        $this -> defaultContexts = $a;
+        return $this;
+    }
+
+
+
+    /*
+        Return default contexs list
+    */
+    public function getDefaultContexts()
+    :array
+    {
+        return $this -> defaultContexts;
+    }
+
 
 
     /*
@@ -426,6 +448,4 @@ class Web extends Engine
     {
         return $this -> url;
     }
-
-
 }

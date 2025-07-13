@@ -141,14 +141,14 @@ class WebPayload extends Hub
     public function getTemplate
     (
         /**/
-        string  $aId         = null,
-        array   $aContext    = []
+        string  $aId,
+        string  $aContext    = ''
     )
     {
         /* Define result */
         $result = '';
 
-        $aContext = empty( $aContext ) ? $this -> getContext() : [];
+        $aContext = empty( $aContext ) ? $this -> getContext() : null;
         $file = $this -> getContentFileAny( $aId, $aContext );
 
         if( !empty( $file ))
@@ -443,19 +443,14 @@ class WebPayload extends Hub
     */
     public function getContextPath
     (
-        string $aLocal   = '',
-        array $aContext = null,
-        string $aProject = null
+        string  $aLocal   = '',
+        string  $aContext = '',
+        string  $aProject = ''
     )
     {
-        $context = implode
-        (
-            '-',
-            empty( $aContext ) ? $this -> getContext() : $aContext
-        );
         return $this -> getContentPath
         (
-            $context . clLocalPath( $aLocal ),
+            $aContext . clLocalPath( $aLocal ),
             $aProject
         );
     }
@@ -467,9 +462,9 @@ class WebPayload extends Hub
     */
     public function getContentFile
     (
-        string $aIdFile     = null,
-        array $aContext     = [],
-        string $aProject    = null,
+        string $aIdFile,
+        string $aContext    = '',
+        string $aProject    = '',
         string $aLocal      = ''
     )
     {
@@ -488,36 +483,52 @@ class WebPayload extends Hub
     */
     public function getContentFileAny
     (
-        string  $aIdFile     = null,
-        array | null  $aContext     = []
+        string  $aIdFile,
+        string  $aContext = ''
     )
     {
+        /* Обработка контекстов */
+        $contexts = $this -> getApp() -> getDefaultContexts();
+        if( $aContext !== '' )
+        {
+            $contexts = array_values
+            (
+                array_filter
+                (
+                    $contexts,
+                    fn( $f ) => $f !== $aContext
+                )
+            );
+            array_unshift( $contexts, $aContext );
+        }
+
         /* Запрос перечня проектов */
         $projects = $this -> getApp() -> getProjects();
 
         /* Обход проектов для запроса пути */
         foreach( $projects as $projectPath )
         {
-
-//TODO обдумать как ивзелвать контент из DEFAULT контекста если не найден в запрошенном
-//возмно нужен массив контектов умолчальных
             if( !empty( $projectPath ))
             {
-                $file = $this -> getContentFile
-                (
-                    $aIdFile,
-                    $aContext,
-                    $projectPath
-                );
-                /* Log information */
-                $this -> getLog()
-                -> trace( 'Looking for content' )
-                -> param( 'file', $file );
-                /* Get real path */
-                $result = realpath( $file );
-                if( !empty( $result ))
+                foreach( $contexts as $context )
                 {
-                    break;
+print_r( $context );
+                    $file = $this -> getContentFile
+                    (
+                        $aIdFile,
+                        $context,
+                        $projectPath
+                    );
+                    /* Log information */
+                    $this -> getLog()
+                    -> trace( 'Looking for content' )
+                    -> param( 'file', $file );
+                    /* Get real path */
+                    $result = realpath( $file );
+                    if( !empty( $result ))
+                    {
+                        break 2;
+                    }
                 }
             }
         }
