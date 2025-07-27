@@ -142,13 +142,13 @@ class WebPayload extends Hub
     (
         /**/
         string  $aId,
-        string  $aContext    = ''
+        string  $aContext   = ''
     )
     {
         /* Define result */
         $result = '';
 
-        $aContext = empty( $aContext ) ? $this -> getContext() : null;
+        $aContext = empty( $aContext ) ? $this -> getContext() : '';
         $file = $this -> getContentFileAny( $aId, $aContext );
 
         if( !empty( $file ))
@@ -273,7 +273,7 @@ class WebPayload extends Hub
     {
         return $this
         -> setContent( $this -> getResultAsArray() )
-        -> setContentType( Web::JSON );
+        -> setContentType( Mime::JSON );
     }
 
 
@@ -339,6 +339,7 @@ class WebPayload extends Hub
     */
 
     public function getContext()
+    :string
     {
         return $this -> getApp() -> getContext();
     }
@@ -512,17 +513,12 @@ class WebPayload extends Hub
             {
                 foreach( $contexts as $context )
                 {
-print_r( $context );
                     $file = $this -> getContentFile
                     (
                         $aIdFile,
                         $context,
                         $projectPath
                     );
-                    /* Log information */
-                    $this -> getLog()
-                    -> trace( 'Looking for content' )
-                    -> param( 'file', $file );
                     /* Get real path */
                     $result = realpath( $file );
                     if( !empty( $result ))
@@ -543,20 +539,14 @@ print_r( $context );
     public function getFilePath
     (
         string $aLocal = '',
-        array $aContext = [],
+        string $aContext = '',
         string $aProject = null
     )
     {
-        $context = implode
-        (
-            '-',
-            empty( $aContext ) ? $this -> getContext() : $aContext
-        );
-
         return
         $this -> getRoPublicPath
         (
-            'file/' . $context . clLocalPath( $aLocal ),
+            'file/' . $aContext . clLocalPath( $aLocal ),
             $aProject
         );
     }
@@ -569,7 +559,7 @@ print_r( $context );
     public function getFile
     (
         string $aIdFile     = null,
-        array $aContext     = [],
+        string $aContext    = '',
         string $aProject    = null,
         string $aLocal      = ''
     )
@@ -589,10 +579,25 @@ print_r( $context );
     */
     public function getFileAny
     (
-        string  $aIdFile     = null,
-        array   $aContext     = []
+        string $aIdFile = null,
+        string $aContext = ''
     )
     {
+        /* Обработка контекстов */
+        $contexts = $this -> getApp() -> getDefaultContexts();
+        if( $aContext !== '' )
+        {
+            $contexts = array_values
+            (
+                array_filter
+                (
+                    $contexts,
+                    fn( $f ) => $f !== $aContext
+                )
+            );
+            array_unshift( $contexts, $aContext );
+        }
+
         /* Запрос перечня проектов */
         $projects = $this -> getApp() -> getProjects();
 
@@ -601,21 +606,20 @@ print_r( $context );
         {
             if( !empty( $projectPath ))
             {
-                $file = $this -> getFile
-                (
-                    $aIdFile,
-                    $aContext,
-                    $projectPath
-                );
-                /* Log information */
-                $this -> getLog()
-                -> trace( 'Looking for file' )
-                -> param( 'file', $file );
-                /* Get real path */
-                $result = realpath( $file );
-                if( !empty( $result ))
+                foreach( $contexts as $context )
                 {
-                    break;
+                    $file = $this -> getFile
+                    (
+                        $aIdFile,
+                        $context,
+                        $projectPath
+                    );
+                    /* Get real path */
+                    $result = realpath( $file );
+                    if( !empty( $result ))
+                    {
+                        break 2;
+                    }
                 }
             }
         }

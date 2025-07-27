@@ -130,6 +130,18 @@ class Web extends Engine
             );
         }
 
+        if( $this -> url -> isEmptyUri())
+        {
+            $this -> url -> setPath
+            (
+                $this -> getParam
+                (
+                    [ 'web', 'default', 'url', 'path' ],
+                    [ 'content', 'page', 'main.html' ]
+                )
+            );
+        }
+
         return $this;
     }
 
