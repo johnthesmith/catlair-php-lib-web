@@ -51,8 +51,8 @@ class Builder extends Result
     private $Owner             = null;
 
     /* Settings */
-    private $FContent           = null;     /* Current content */
-    private $FContentType       = null;     /* Content type like text/html text/css etc...*/
+    private $fContent           = null;     /* Current content */
+    private $fContentType       = null;     /* Content type like text/html text/css etc...*/
     private $FRecursDepth       = 100;      /* Maximum recursion depth */
 
     /* Search and replace arrays */
@@ -128,11 +128,11 @@ class Builder extends Result
     */
     public function build()
     {
-        $this -> FContent = $this -> parsing( $this -> FContent );
-        $this -> FContent = $this -> replace( $this -> FContent );
+        $this -> fContent = $this -> parsing( $this -> fContent );
+        $this -> fContent = $this -> replace( $this -> fContent );
         if( $this -> Optimize )
         {
-            $this -> FContent = $this -> Optimize( $this -> FContent );
+            $this -> fContent = $this -> Optimize( $this -> fContent );
         }
         return $this;
     }
@@ -699,20 +699,25 @@ class Builder extends Result
     /*
         Set content
     */
-    public function setContent( $AContent )
+    public function setContent
+    (
+        /* Content value */
+        $a
+    )
+    :self
     {
-        $this -> FContent = $AContent;
+        $this -> fContent = $a;
         return $this;
     }
 
 
 
     /*
-        Get content
+        Return content
     */
     public function getContent()
     {
-        return $this -> FContent;
+        return $this -> fContent;
     }
 
 
@@ -743,7 +748,7 @@ class Builder extends Result
         $AValue
     )
     {
-        $this -> FContentType = $AValue;
+        $this -> fContentType = $AValue;
         return $this;
     }
 
@@ -751,7 +756,7 @@ class Builder extends Result
 
     public function getContentType()
     {
-        return $this -> FContentType;
+        return $this -> fContentType;
     }
 
 
