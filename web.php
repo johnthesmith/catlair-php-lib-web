@@ -223,7 +223,7 @@ class Web extends Engine
                 $this -> url -> getPath()[ 0 ] ?? '',
                 'api'
             )
-            -> call
+            -> run
             (
                 $this -> url -> getPath()[ 1 ] ?? '',
                 is_array( $this -> url -> getParams())
