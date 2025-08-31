@@ -323,6 +323,7 @@ class WebPayload extends Hub
         -> setContent( $this -> getContent())
         -> setContentType( $this -> getContentType() )
         -> setIncome( clArrayAppend( $aArgs, $this -> getApp() -> getParams()))
+        -> setOptimize( false )
         -> build()
         -> resultTo( $this )
         ;

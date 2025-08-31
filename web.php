@@ -154,12 +154,16 @@ class Web extends Engine
     public function onConfig()
     :self
     {
+        /* Read JSON from body request */
+        $input = file_get_contents( 'php://input' );
+        $jsonData = json_decode( $input, true );
+
         return $this
         -> appendParams( $_GET )
         -> appendParams( $_POST )
-        -> appendParams( $_COOKIE );
+        -> appendParams( $_COOKIE )
+        -> appendParams( $jsonData ?? [] );
     }
-
 
 
     /*
@@ -277,24 +281,27 @@ class Web extends Engine
             }
         }
 
-        switch( $contentType )
+        if( is_array( $content ))
         {
-            case Mime::JSON:
-                $content = json_encode
-                (
-                    $content,
-                    JSON_UNESCAPED_SLASHES |
-                    JSON_UNESCAPED_UNICODE |
-                    JSON_PRETTY_PRINT
-                );
-            break;
-            case Mime::YAML:
-                $content = yaml_emit( $content );
-                if( empty( $contentFileName ))
-                {
-                    $contentFileName = 'file.yaml';
-                }
-            break;
+            switch( $contentType )
+            {
+                case Mime::JSON:
+                    $content = json_encode
+                    (
+                        $content,
+                        JSON_UNESCAPED_SLASHES |
+                        JSON_UNESCAPED_UNICODE |
+                        JSON_PRETTY_PRINT
+                    );
+                break;
+                case Mime::YAML:
+                    $content = yaml_emit( $content );
+                    if( empty( $contentFileName ))
+                    {
+                        $contentFileName = 'file.yaml';
+                    }
+                break;
+            }
         }
 
         /* Send session */
