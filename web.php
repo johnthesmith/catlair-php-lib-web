@@ -132,12 +132,12 @@ class Web extends Engine
 
         if( $this -> url -> isEmptyUri())
         {
-            $this -> url -> setPath
+            $this -> url -> setUri
             (
                 $this -> getParam
                 (
-                    [ 'web', 'default', 'url', 'path' ],
-                    [ 'content', 'page', 'main.html' ]
+                    [ 'web', 'default', 'uri' ],
+                    [ 'content/page/main.html' ]
                 )
             );
         }
