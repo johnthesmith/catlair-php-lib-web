@@ -50,10 +50,15 @@ class Builder extends Result
     /* Owner */
     private $Owner             = null;
 
-    /* Settings */
-    private $fContent           = null;     /* Current content */
-    private $fContentType       = null;     /* Content type like text/html text/css etc...*/
-    private $FRecursDepth       = 100;      /* Maximum recursion depth */
+    /*
+        Settings
+    */
+    /* Current content */
+    private $FContent           = null;
+    /* Content type like text/html text/css etc...*/
+    private $FContentType       = null;
+    /* Maximum recursion depth */
+    private $FRecursDepth       = 100;
 
     /* Search and replace arrays */
     public $Income              = null;
@@ -124,34 +129,18 @@ class Builder extends Result
 
 
     /*
-        Building content
-    */
-    public function build()
-    {
-        $this -> fContent = $this -> parsing( $this -> fContent );
-        $this -> fContent = $this -> replace( $this -> fContent );
-        if( $this -> Optimize )
-        {
-            $this -> fContent = $this -> Optimize( $this -> fContent );
-        }
-        return $this;
-    }
-
-
-
-    /*
         Building external content
         TODO it should be static
     */
     public function buildContent
     (
+        /* Content */
         string  $AContent,
         bool    $AOptimize  = null,
         bool    $AReplace   = true
     )
     {
         $AContent = $this -> parsing( $AContent );
-
         if( $AReplace )
         {
             $AContent = $this -> replace( $AContent );
@@ -162,7 +151,23 @@ class Builder extends Result
             $AContent = $this -> Optimize( $AContent );
         }
 
-        return $AContent;
+        return self::removeProtector( $AContent );
+    }
+
+
+
+
+    /*
+        Building content
+    */
+    public function build()
+    {
+        $this -> FContent = $this -> buildContent
+        (
+            $this -> FContent,
+            $this -> Optimize,
+        );
+        return $this;
     }
 
 
@@ -227,7 +232,7 @@ class Builder extends Result
 
 
     /*
-        Recurcive parsing for content from Content with depth
+        Parsing for content from Content with depth
         After parsing funciton will return new content
     */
     private function pars
@@ -241,51 +246,67 @@ class Builder extends Result
         $ADepth ++;
         if( $ADepth < $this -> FRecursDepth )
         {
+            $m = null;
             do
             {
-                /* Getting list of tags over regvar with cl tag */
-                preg_match
+                $AContent = self::protectProcessing
                 (
-                    '/\<cl(?:(\<)|".+?"|.|\n)*?(?(1)\/cl|\/)\>/',
                     $AContent,
-                    $m,
-                    PREG_OFFSET_CAPTURE
-                );
-
-                if( count( $m ) > 0 )
-                {
-                    $b = $m[0][1];
-                    $l = strlen ($m[0][0]);
-                    $Source = $m[0][0];
-
-                    if ( $l > 0 )
+                    function( $content ) use ( $ADepth, &$m )
                     {
-                        $Source = $this -> replace( $Source );
-                        $XMLSource = implode( '', ['<?xml version="1.0"?>',  $Source] );
-                        libxml_use_internal_errors(true);
-                        $XML = simplexml_load_string( $XMLSource );
+                        /* Getting list of tags over regvar with cl tag */
+                        preg_match
+                        (
+                            '/\<cl(?:(\<)|".+?"|.|\n)*?(?(1)\/cl|\/)\>/',
+                            $content,
+                            $m,
+                            PREG_OFFSET_CAPTURE
+                        );
 
-                        if( empty( $XML ))
+                        if( count( $m ) > 0 )
                         {
-                            $Result = 'cl-xml-format-error';
-                        }
-                        else
-                        {
-                            $Content = isset( $XML[ 0 ]) ? $XML[ 0 ] : '';
-                            $this -> BuildElement( $Content, $XML, $ADepth );
-                            $Result = $Content;
-                        }
+                            $b = $m[0][1];
+                            $l = strlen ($m[0][0]);
+                            $Source = $m[0][0];
 
-                        /* Check recurstion error */
-                        if ( $ADepth + 1 ==  $this -> FRecursDepth )
-                        {
-                            $Result = 'cl-recursion-error';
-                        }
+                            if ( $l > 0 )
+                            {
+                                $Source = $this -> replace( $Source );
+                                $XMLSource = implode
+                                (
+                                    '',
+                                    [ '<?xml version="1.0"?>',  $Source ]
+                                );
+                                libxml_use_internal_errors(true);
+                                $XML = simplexml_load_string( $XMLSource );
 
-                        /* Replace in content */
-                        $AContent = trim( substr_replace( $AContent, $Result, $b, $l ));
+                                if( empty( $XML ))
+                                {
+                                    $Result = 'cl-xml-format-error';
+                                }
+                                else
+                                {
+                                    $c = isset( $XML[ 0 ]) ? $XML[ 0 ] : '';
+                                    $this -> BuildElement( $c, $XML, $ADepth );
+                                    $Result = $c;
+                                }
+
+                                /* Check recurstion error */
+                                if ( $ADepth + 1 ==  $this -> FRecursDepth )
+                                {
+                                    $Result = 'cl-recursion-error';
+                                }
+
+                                /* Replace in content */
+                                $content = trim
+                                (
+                                    substr_replace( $content, $Result, $b, $l )
+                                );
+                            }
+                        }
+                        return $content;
                     }
-                }
+                );
             }
             while ( count( $m ) > 0 && $this -> isOk() );
         }
@@ -682,6 +703,83 @@ class Builder extends Result
 
 
     /**************************************************************************
+        Protector
+    */
+
+    /*
+        Processing content exlude protection part in literals
+    */
+    static public function protectProcessing
+    (
+        /* Content for processing */
+        $content,
+        /* Processing callback */
+        callable $callback,
+        /* Protector expression */
+        $protectorPattern = '/\^\^\^(.*?)\^\^\^/s',
+        /* Protector masq */
+        $mask = '^^^ ^^^'
+    )
+    {
+        $rawBlocks = [];
+
+        /* Remove all protected blocks in to array */
+        $content = preg_replace_callback
+        (
+            $protectorPattern,
+            function( $matches ) use ( &$rawBlocks, $mask )
+            {
+                /* Store expression */
+                $rawBlocks[] = $matches[0];
+                /* return masque */
+                return $mask;
+            },
+            $content
+        );
+
+        /*Complete callpack processing */
+        $content = $callback( $content );
+
+        /* Restore content */
+        foreach( $rawBlocks as $block )
+        {
+            $content = preg_replace
+            (
+                '/' . preg_quote( $mask, '/' ) . '/',
+                $block,
+                $content,
+                1
+            );
+        }
+        return $content;
+    }
+
+
+
+    /*
+        Remove protector from content
+    */
+    function removeProtector
+    (
+        $content,
+        $protectorPattern = '/\^\^\^(.*?)\^\^\^/s'
+    )
+    {
+        /* Replace protected blocks on pure text without ^^^ */
+        return preg_replace_callback
+        (
+            $protectorPattern,
+            function( $matches )
+            {
+                return $matches[ 1 ];
+            },
+            $content
+        );
+    }
+
+
+
+    /**************************************************************************
         Setters and getters
     */
 
@@ -699,25 +797,20 @@ class Builder extends Result
     /*
         Set content
     */
-    public function setContent
-    (
-        /* Content value */
-        $a
-    )
-    :self
+    public function setContent( $AContent )
     {
-        $this -> fContent = $a;
+        $this -> FContent = $AContent;
         return $this;
     }
 
 
 
     /*
-        Return content
+        Get content
     */
     public function getContent()
     {
-        return $this -> fContent;
+        return $this -> FContent;
     }
 
 
@@ -748,7 +841,7 @@ class Builder extends Result
         $AValue
     )
     {
-        $this -> fContentType = $AValue;
+        $this -> FContentType = $AValue;
         return $this;
     }
 
@@ -756,7 +849,7 @@ class Builder extends Result
 
     public function getContentType()
     {
-        return $this -> fContentType;
+        return $this -> FContentType;
     }
 
 
@@ -777,3 +870,5 @@ class Builder extends Result
         return $this;
     }
 }
+
+
