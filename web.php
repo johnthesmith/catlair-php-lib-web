@@ -137,7 +137,7 @@ class Web extends Engine
                 $this -> getParam
                 (
                     [ 'web', 'default', 'uri' ],
-                    [ 'content/page/main.html' ]
+                    'content/page/main.html'
                 )
             );
         }
