@@ -707,50 +707,49 @@ class Builder extends Result
     */
 
     /*
-        Processing content exlude protection part in literals
+        Метод выполняет обработку текста с защитой блоков от изменений
+        Защищенные блоки подменяются на временное выраженеи на основе
+        uuid после обработки в функции обратного вызова выполняется
+        восстановление защищенных блоков.
+
+        После обработки следует вызвать метод удаления протектора
+        removeProtector
     */
     static public function protectProcessing
     (
-        /* Content for processing */
+        /* Обрабатываемый контент */
         $content,
-        /* Processing callback */
+        /* Метод обратного вызова для фактической обработки */
         callable $callback,
-        /* Protector expression */
-        $protectorPattern = '/\^\^\^(.*?)\^\^\^/s',
-        /* Protector masq */
-        $mask = '^^^ ^^^'
+        /* Маска защищающая контент */
+        $protectorPattern = '/\^\^\^(.*?)\^\^\^/s'
     )
+    :string
     {
-        $rawBlocks = [];
+        $blocks = [];
 
-        /* Remove all protected blocks in to array */
+        /* Убираем все защищённые блоки, заменяя их уникальными масками */
         $content = preg_replace_callback
         (
             $protectorPattern,
-            function( $matches ) use ( &$rawBlocks, $mask )
+            function( $matches ) use ( &$blocks )
             {
-                /* Store expression */
-                $rawBlocks[] = $matches[0];
-                /* return masque */
+                $mask = 'P-' . clUuid() . '-M';
+                $blocks[ $mask ] = $matches[0];
                 return $mask;
             },
             $content
         );
 
-        /*Complete callpack processing */
+        // Обрабатываем оставшийся контент
         $content = $callback( $content );
 
-        /* Restore content */
-        foreach( $rawBlocks as $block )
+        // Восстанавливаем защищённые блоки
+        foreach( $blocks as $mask => $block )
         {
-            $content = preg_replace
-            (
-                '/' . preg_quote( $mask, '/' ) . '/',
-                $block,
-                $content,
-                1
-            );
+            $content = str_replace( $mask, $block, $content );
         }
+
         return $content;
     }
 
