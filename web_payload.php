@@ -52,8 +52,8 @@ class WebPayload extends Hub
     /* Payload content, initially empty */
     private $content = '';
 
-    /* Content type of the payload */
-    private $contentType = null;
+    /* Default content type of the payload */
+    private $contentType = Mime::TXT;
 
     /* Filename of the returned content */
     private $contentFileName = '';
@@ -95,6 +95,7 @@ class WebPayload extends Hub
         {
             $result -> setContentFileName( $this -> getContentFileName() );
         }
+
         return $result;
     }
 
@@ -170,92 +171,6 @@ class WebPayload extends Hub
             $this -> getApp() -> resultWarning( $this );
         }
         return $result;
-    }
-
-
-
-    /*
-        Запуск метода удаленной полезной нагрузки через REST
-        c использованием прямой ссылки и таймаута исполднения запроса
-    */
-    public function summon
-    (
-        /* Имя вызываемой полезной нагрузки */
-        string  $APayloadName,
-        /* Имя метода */
-        string  $APayloadMethod,
-        /* Дополнительные аргументы */
-        array   $AArguments,
-        /* Имя конфигураци с настройками */
-        string  $AURL,
-        /* Имя конфигураци с настройками */
-        string  $ARequestTimeoutMls,
-        /* Тип исполнтеля dispatcher или preceptor */
-        string $AType = 'dispatcher'
-    )
-    {
-//        /* Формирование ссылки */
-//        $callUrl = URL::Create()
-//        -> parse( $AURL )
-//        -> setPath([ 'api', $AType, 'exec' ])
-//        -> clearParams()
-//        ;
-
-//        /* Исполнение запроса */
-//        $bot = WebBot::create( $this -> getLog() )
-//        -> setRequestTimeoutMls( $ARequestTimeoutMls )
-//        -> setUrl( $callUrl )
-//        -> setPostParam( 'payloadName'      , $APayloadName )
-//        -> setPostParam( 'payloadMethod'    , $APayloadMethod )
-//        -> setPostParam( 'payloadArguments' , $AArguments )
-//        -> execute()
-//        -> resultTo( $this )
-//        ;
-//
-//        /*
-//            Получние результата из текста ответа при положительном
-//            состоянии после бота
-//        */
-//        $answer = null;
-//        if( $this -> isOk() )
-//        {
-//            /* Анализ ответа */
-//            if( $bot -> getContentType() == 'application/json' )
-//            {
-//                $answer = json_decode( $bot -> getAnswer(), true );
-//                if( is_array( $answer ))
-//                {
-//                    /* Установка текущего состояния из ответа */
-//                    $this -> setResultFromArray( $answer );
-//                }
-//            }
-//            else
-//            {
-//                $answer = $bot -> getAnswer();
-//            }
-//        }
-
-//        /* Возврат результата */
-//        $this -> setContentType( $bot -> getContentType());
-//        if
-//        (
-//            $this -> getContentType() == 'application/json' &&
-//            is_array( $answer )
-//        )
-//        {
-//            /* Возврат структурированного результата */
-//            $this
-//            -> getApp()
-//            -> getOutcomeList()
-//            -> setParams( clValueFromObject( $answer, 'Outcome' ));
-//        }
-//        else
-//        {
-//            /* Возврат контента */
-//            $this -> setContent( $answer );
-//        }
-//
-        return $this;
     }
 
 
@@ -639,4 +554,341 @@ class WebPayload extends Hub
         return $this -> getApp() -> getUrl();
     }
 
+
+
+
+    /**************************************************************************
+        Механизм и вспомогательные интерфейся summon
+        Вызов удаленных полезных нагрузок
+    */
+
+    /*
+        Запуск метода удаленной полезной нагрузки через REST
+        c использованием прямой ссылки и таймаута исполднения запроса
+    */
+    public function summon
+    (
+        /* Имя вызываемой полезной нагрузки */
+        string $aPayloadName,
+        /* Имя метода */
+        string $aPayloadMethod,
+        /* Аргументы */
+        array  $aArguments = [],
+        /* Host */
+        array $aHosts = []
+    )
+    :self
+    {
+        /* Чтение списка хостов */
+        if( empty( $aHosts ))
+        {
+            $aHosts = $this -> readSummonHosts();
+        }
+
+        /* Сборка статистики по хостам */
+        $stats = $this -> selectSummonStats( $aHosts, $aPayloadName );
+
+        /* Чтение количества попыток перенаправления */
+        $maxTries = $this -> readMaxSummonTry();
+
+        /* Цикл попыток исполнения */
+        $attempt = 0;
+        while( $attempt < $maxTries )
+        {
+            $attempt++;
+            /* Получение worker */
+            $host = $this -> selectSummonHost( $stats );
+
+            /* Формирование ссылки */
+            $url = URL::Create()
+            -> parse( $host . '/' . $aPayloadName . '/'. $aPayloadMethod );
+
+            /* Извлекаем время исполнения предельное из конфига */
+            $timeout =
+            $this -> getApp()
+            -> getParams()
+            [ 'web' ]
+            [ 'summon' ]
+            [ 'request-timeout-mls' ]
+            [ $aPayloadName ]
+            ??
+            (
+                $this -> getApp()
+                -> getParams()
+                [ 'web' ]
+                [ 'summon' ]
+                [ 'default-request-timeout-mls' ]
+            ) ?? 1000;
+
+            $this -> startSummonStat( $host, $aPayloadName );
+
+            $this -> getLog()
+            -> begin( 'summon' )
+            -> param( 'host', $host )
+            -> param( 'payload', $aPayloadName )
+            -> param( 'method', $aPayloadMethod )
+            ;
+
+            /* Исполнение запроса */
+            $bot = WebBot::create( $this -> getLog() )
+            -> setRequestTimeoutMls( $timeout )
+            -> setUrl( $url )
+            -> setPostParams( $aArguments )
+            -> setHeaders( $this -> getApp() -> getInHeaders())
+            -> execute()
+            -> resultTo( $this );
+
+            /* Return headers */
+            $this -> getApp() -> applyHeaders( $bot -> getHeaders() );
+
+            /* */
+            $this -> getLog() -> end();
+            $this -> stopSummonStat( $host, $aPayloadName, $this -> getCode() );
+
+            /* Теперь проверяем состояние ТЕКУЩЕГО payload */
+            if( $this -> isOk())
+            {
+                $answer = $bot -> getAnswer();
+                $contentType = $bot -> getContentType();
+                $this -> setContentType( $contentType );
+
+                if( $contentType === 'application/json' )
+                {
+                    $data = json_decode( $answer, true );
+                    if( is_array( $data ))
+                    {
+                        if( isset( $data[ 0 ][ 'code'] ))
+                        {
+                            $this -> setResultFromArray( $data );
+                        }
+                        else
+                        {
+                            $this -> setContent( $answer );
+                        }
+                    }
+                    else
+                    {
+                        $this -> setContent( $answer );
+                    }
+                }
+                else
+                {
+                    $this -> setContent( $answer );
+                }
+
+                /* Завершение цикла */
+                $attempt = $maxTries;
+            }
+        }
+
+        return $this;
+    }
+
+
+    /*
+        Чтение количества попыток перенаправления
+    */
+    public function readMaxSummonTry()
+    {
+        return $this -> getApp() -> getParam([ 'web', 'summon', 'try' ], 2 );
+    }
+
+
+
+    /*
+        Возваращает список узлов которые следует вызвать
+        при summon и диспетчеризации
+    */
+    public function readSummonHosts()
+    {
+        return $this -> getApp()
+        -> getParams()[ 'web' ][ 'summon' ][ 'hosts' ] ?? [];
+    }
+
+
+
+    /*
+        Возвращает по списку узлов статистику вызовов
+        на них полезной нагрузки
+    */
+    public function selectSummonStats
+    (
+        /* Список узлов */
+        array $hosts,
+        /* Полезная нагрузка */
+        string $payload
+    )
+    : array
+    {
+        $result = [];
+        $now = (int)( microtime( true ) * 1000000 );
+
+        /* Извлечение времени восстановления из конфига */
+        $recoveryTimeSec = $this -> getApp() -> getParam
+        (   [
+                'web',
+                'summon',
+                'recovery-time-sec'
+            ],
+            10
+        );
+
+        /* Обход перечня хостов */
+        foreach( $hosts as $host )
+        {
+            $stat = $this -> readSummonStat( $host, $payload );
+
+            $start = $stat[ 'start' ] ?? 0;
+            $stop = $stat[ 'stop' ] ?? 0;
+
+            /* Длительность исполнения в миллисекундах */
+            $duration = $stop - $start;
+            $duration = $duration < 0 ? 0 : $duration;
+
+            if( $duration > 0 )
+            {
+                $stat[ 'duration' ] = $duration;
+            }
+
+            $last = $stop ?: $now;
+            $age = $now - $last;
+
+            /* восстанавливается за 60 секунд */
+            $recoveryTimeSec = 10;
+
+            /* Штраф (penalty) — чем меньше, тем лучше */
+            $penalty = 0;
+            if( $duration > 0 )
+            {
+                $decayRate = $duration / ( $recoveryTimeSec * 1000000 );
+                $penalty = $duration - $age * $decayRate;
+            }
+
+            if( $penalty < 1000 )
+            {
+                $penalty = rand( 0, 1000 );
+            }
+
+            $stat[ 'penalty' ] = $penalty;
+
+            $result[ $host ] = $stat;
+        }
+        return $result;
+    }
+
+
+
+    /*
+        Возвращает лучший хост для исполнения нагрузки на основе статистики
+    */
+    public function selectSummonHost
+    (
+        array $aStats
+    )
+    : string
+    {
+        $best = '';
+        $bestScore = INF;
+        foreach( $aStats as $host => $stat )
+        {
+            $penalty = $stat[ 'penalty' ] ?? 0;
+            if( $penalty < $bestScore )
+            {
+                $bestScore = $penalty;
+                $best = $host;
+            }
+        }
+        return $best;
+    }
+
+
+
+    /*
+        Возвращает массив статистики
+    */
+    public function readSummonStat
+    (
+        string $host,
+        string $payload
+    ): array
+    {
+        $key = 'stats_' . $payload . '_' . $host;
+        $data = apcu_fetch( $key );
+        return is_array($data) ? $data : [];
+    }
+
+
+
+    /*
+        Запуск сбора статистики при исполнении внешнго вызова
+    */
+    public function startSummonStat
+    (
+        string $host,
+        string $payload
+    )
+    : self
+    {
+        $key = 'stats_' . $payload . '_' . $host;
+        $data = $this -> readSummonStat( $host, $payload );
+        $data[ 'start' ] = (int)( microtime(true) * 1000000 );
+        apcu_store($key, $data);
+        return $this;
+    }
+
+
+
+    /*
+        Остановка сбора статистики при исполнении внешнего вызова
+        фактически запись статистики по результаатм.
+    */
+    public function stopSummonStat
+    (
+        string $host,
+        string $payload,
+        string $code
+    )
+    : self
+    {
+        $key = 'stats_' . $payload . '_' . $host;
+        $data = $this -> readSummonStat( $host, $payload );
+        $data[ 'count' ] = ( $data[ 'count' ] ?? 0) + 1;
+        $data[ 'stop' ] = (int)( microtime(true) * 1000000 );
+        $data[ 'code' ] = $code;
+        apcu_store( $key, $data );
+        return $this;
+    }
+
+
+
+    /*
+        Очистка статистики вызовов для хоста и payload
+    */
+    public function clearSummonStat
+    (
+        string $host,
+        string $payload
+    )
+    : self
+    {
+        $key = 'stats_' . $payload . '_' . $host;
+        apcu_delete( $key );
+        return $this;
+    }
+
+
+
+    /*
+        Trace to http header
+    */
+    public function trace
+    (
+        string $aEvent,
+        string $aLabel
+    )
+    :self
+    {
+        $this -> getApp() -> trace( $aEvent, $aLabel );
+        return $this;
+    }
 }

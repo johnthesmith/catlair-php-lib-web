@@ -27,7 +27,7 @@ namespace catlair;
     <cl param="command" param="value" ... />
     or
     <cl param="command" param="value" ... >
-    <command param="value"/>
+        <command param="value"/>
     </cl>
 
     https://github.com/johnthesmith/catlair-php-lib-web
@@ -54,9 +54,9 @@ class Builder extends Result
         Settings
     */
     /* Current content */
-    private $FContent           = null;
+    private $content           = null;
     /* Content type like text/html text/css etc...*/
-    private $FContentType       = null;
+    private $contentType       = null;
     /* Maximum recursion depth */
     private $FRecursDepth       = 100;
 
@@ -90,10 +90,10 @@ class Builder extends Result
     static public function create
     (
         /* Any owner class */
-        $AOwner
+        $aOwner
     )
     {
-        return new Builder( $AOwner );
+        return new Builder( $aOwner );
     }
 
 
@@ -109,7 +109,6 @@ class Builder extends Result
             [
                 '/(?:("(?:.|\n)*?")|(?:( |^|\n)\/\/.*))/',
                 '!/\*.*?\*/!s',
-//                '/(?:\/\*(?:.|\n)*?\*\/)/',
                 '/(?:("(?:.|\n)*?")|([\r\n ]+))/',
                 '/(?:("(?:.|\n)*?")|(?: ?((?:>=)|(?:<=)|(?:===)|(?:==)|(?:!==)|(?:!=)|(?:[=\[\]{};:])) ?))/i',
                 '/" /'
@@ -130,30 +129,62 @@ class Builder extends Result
 
     /*
         Building external content
-        TODO it should be static
     */
     public function buildContent
     (
         /* Content */
-        string  $AContent,
-        bool    $AOptimize  = null,
-        bool    $AReplace   = true
+        string $aContent,
+        /* Optimize result */
+        ?bool $aOptimize = null,
+        /* Replace incoming attributes */
+        bool $aReplace = true,
+        /* Optional postprocessing */
+        ?callable $aPostProcess = null
     )
+    : string
     {
-        $AContent = $this -> parsing( $AContent );
-        if( $AReplace )
+        $maxIterations = 50;
+        $iteration = 0;
+
+        $previousHash = md5( $aContent );
+        do
         {
-            $AContent = $this -> replace( $AContent );
+            /* Recurcive processing */
+            $aContent = $this -> parsing( $aContent );
+
+            /* Replace parameters */
+            if( $aReplace )
+            {
+                $aContent = $this -> replace( $aContent );
+            }
+
+            /* Postprocessing */
+            if( $aPostProcess !== null && is_callable($aPostProcess))
+            {
+                $aContent = call_user_func
+                (
+                    $aPostProcess, $aContent, $iteration
+                );
+            }
+
+            /* Calculate new hash */
+            $currentHash = md5( $aContent );
+            $hasChanges = ( $currentHash !== $previousHash );
+            $previousHash = $currentHash;
+
+            /* Iteration increment */
+            $iteration++;
+        }
+        while( $hasChanges && $iteration < $maxIterations );
+
+        /* Optimization */
+        if( ($aOptimize === null) ? $this->Optimize : $aOptimize )
+        {
+            $aContent = $this -> optimize( $aContent );
         }
 
-        if( $AOptimize === null ? $this -> Optimize : $AOptimize )
-        {
-            $AContent = $this -> Optimize( $AContent );
-        }
-
-        return self::removeProtector( $AContent );
+        return self::removeProtector( $aContent );
     }
-
 
 
 
@@ -162,9 +193,9 @@ class Builder extends Result
     */
     public function build()
     {
-        $this -> FContent = $this -> buildContent
+        $this -> content = $this -> buildContent
         (
-            $this -> FContent,
+            $this -> content,
             $this -> Optimize,
         );
         return $this;
@@ -175,7 +206,11 @@ class Builder extends Result
     /*
         Parsing any content from $AContent:string and return result
     */
-    public function parsing( $AContent )
+    public function parsing
+    (
+        string $AContent
+    )
+    :string
     {
         return $this -> pars( $AContent, 0 );
     }
@@ -207,26 +242,14 @@ class Builder extends Result
 
 
     /*
-        `Replace all keys in the content $AContent:string and return it
+        Replace all keys in the content $AContent:string and return it
     */
-    public function replace( $AContent )
+    public function replace
+    (
+        $aContent
+    )
     {
-        $Names = [];
-        $Values = [];
-        foreach( $this -> Income -> GetParams() as $Name => $Value )
-        {
-            switch( gettype( $Value  ))
-            {
-                case 'string':
-                case 'bool':
-                case 'double':
-                {
-                    array_push( $Names, '%' . $Name . '%' );
-                    array_push( $Values, $Value );
-                }
-            }
-        }
-        return str_replace( $Names, $Values, $AContent );
+        return clReplace( $aContent, $this -> getIncome() -> getParams() );
     }
 
 
@@ -798,7 +821,7 @@ class Builder extends Result
     */
     public function setContent( $AContent )
     {
-        $this -> FContent = $AContent;
+        $this -> content = $AContent;
         return $this;
     }
 
@@ -809,7 +832,7 @@ class Builder extends Result
     */
     public function getContent()
     {
-        return $this -> FContent;
+        return $this -> content;
     }
 
 
@@ -840,7 +863,7 @@ class Builder extends Result
         $AValue
     )
     {
-        $this -> FContentType = $AValue;
+        $this -> contentType = $AValue;
         return $this;
     }
 
@@ -848,7 +871,7 @@ class Builder extends Result
 
     public function getContentType()
     {
-        return $this -> FContentType;
+        return $this -> contentType;
     }
 
 
@@ -869,5 +892,3 @@ class Builder extends Result
         return $this;
     }
 }
-
-
