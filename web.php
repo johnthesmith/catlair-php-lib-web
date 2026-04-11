@@ -179,7 +179,9 @@ class Web extends Engine
         $this -> getLog() -> dump( $this -> getInHeaders(), 'headers' );
 
         /* Let inner headers */
-        $this -> inHeaders = getallheaders();
+        $this -> inHeaders = function_exists( 'getallheaders' )
+        ? getallheaders()
+        : [];
 
         /* Let payload and method */
         $payloadName = null;
@@ -187,32 +189,55 @@ class Web extends Engine
 
         /* Get IP rules */
         $rule = $this -> getRule( $_SERVER[ 'REMOTE_ADDR' ] ?? '' );
-        if( is_array( $rule ))
+        if( empty( $rule ))
         {
-            /* Dump rule in to log */
-            $this -> getLog() -> dump( $rule, 'rule' );
-
-            /* Apply rule uri */
-            $ruleUri = $rule[ 'uri' ] ?? null;
-            if( $ruleUri !== null )
+            $this -> setResult
+            (
+                'web-rule-not-found',
+                [
+                    'msg' => 'check web.rules config'
+                ]
+            );
+        }
+        else
+        {
+            if( !is_array( $rule ))
             {
-                $this -> url -> setUri( $ruleUri );
+                $this -> setResult
+                (
+                    'web-rule-is-not-array',
+                    [
+                        'msg' => 'check web.rules'
+                    ]
+                );
             }
-
-            /* Apply rule action */
-            $ruleAction = $rule[ 'action' ] ?? null;
-            if( $ruleAction !== null )
+            else
             {
-                $parts = explode( '/', $ruleAction );
-                $payloadName = $parts[ 0 ] ?? null;
-                $payloadMethod  = $parts[ 1 ] ?? null;
-            }
+                /* Dump rule in to log */
+                $this -> getLog() -> dump( $rule, 'rule' );
 
-            /* Apply header trace from rule */
-            $this -> trace = $rule[ 'header' ][ 'trace' ] ?? false;
+                /* Apply rule uri */
+                $ruleUri = $rule[ 'uri' ] ?? null;
+                if( $ruleUri !== null )
+                {
+                    $this -> url -> setUri( $ruleUri );
+                }
+
+                /* Apply rule action */
+                $ruleAction = $rule[ 'action' ] ?? null;
+                if( $ruleAction !== null )
+                {
+                    $parts = explode( '/', $ruleAction );
+                    $payloadName = $parts[ 0 ] ?? null;
+                    $payloadMethod  = $parts[ 1 ] ?? null;
+                }
+
+                /* Apply header trace from rule */
+                $this -> trace = $rule[ 'trace' ] ?? false;
+            }
         }
 
-        $this -> traceBegin( $_SERVER[ 'SERVER_ADDR' ]);
+        $this -> traceBegin( $_SERVER[ 'SERVER_ADDR' ] ?? '127.0.0.1' );
 
         /* Open session */
         if( $this -> getParam([ 'web', 'session', 'enabled' ], true ))
@@ -222,16 +247,16 @@ class Web extends Engine
             $this -> setContext( (string) $this -> getSession() -> get( 'context' ));
         }
 
+        /* Buffers on. Preven all output for client */
+        ob_start();
+
         /* Read default context from config */
         $this -> setDefaultContexts
         (
             $this -> getParam([ 'web', 'default', 'contexts' ], [ 'default' ])
         );
 
-        /* Buffers on. Preven all output for client */
-        ob_start();
-
-        /* Check paylaod from url if empty */
+        /* Check payload from url if empty */
         if( $payloadName === null )
         {
             $payloadName = $this -> url -> getPath()[ 0 ] ?? null;
@@ -240,6 +265,7 @@ class Web extends Engine
 
         /* Create and call payload */
         $payload = WebPayload::create( $this, 'flow', 'internal' )
+        -> resultFrom( $this )
         -> call( 'init' )
         -> resultTo( $this );
 
@@ -258,7 +284,7 @@ class Web extends Engine
         		: []
             )
             ;
-            $this -> traceEnd( $payloadMethod );
+            $this -> traceEnd( $payloadMethod . ':' . $payload -> getCode());
         }
 
         /* Postprocessing payload */
@@ -352,7 +378,7 @@ class Web extends Engine
         }
 
         /* Final trace */
-        $this -> traceEnd( $_SERVER[ 'SERVER_ADDR' ]);
+        $this -> traceEnd( $_SERVER[ 'SERVER_ADDR' ] ?? '127.0.0.1' );
 
         /* Move X-headers in to out headers */
         foreach( $this -> inHeaders as $name => $value )
@@ -403,7 +429,7 @@ class Web extends Engine
             {
                 "hostname":
                 {
-                    "path-masque": payload/method
+                    "path-masque": payloadыыр /method
                     ...
                 },
                 ...
@@ -418,33 +444,49 @@ class Web extends Engine
     )
     :array | null
     {
-        $result = null;
+        /* Get rules from config */
         $rules = $this -> getParams()[ 'web' ][ 'rules' ] ?? [];
+        /* Get current host */
+        $host = $this-> getUrl() -> getHost();
+
         /* Loop for ip masque */
         foreach( $rules as $masque => $item )
         {
-            $masks = explode(',', $masque);
+            $masks = array_map( 'trim', explode(',', $masque ));
             foreach( $masks as $mask )
             {
                 /* Check ip by range */
-                if( ip4Range( $aIp, trim( $mask )))
+                if( ip4Range( $aIp, $mask ))
                 {
                     if( is_array( $item ))
                     {
-                        /* Get current host */
-                        $host = $this-> getUrl() -> getHost();
-                        $hostRule = $item[ $host ] ?? $item[ '*' ] ?? null;
-                        if( is_array( $hostRule ))
+                        /* Loop for hosts */
+                        foreach( $item as $hostRulesStr => $hostRule )
                         {
-                            /* Get current path */
-                            $path = implode( '/', $this -> url -> getPath());
-                            $path = empty( $path ) ? "/" : $path;
-                            foreach( $hostRule as $pattern => $rule )
+                            $hostRules = array_map
+                            (
+                                'trim',
+                                explode(',', $hostRulesStr)
+                            );
+                            if
+                            (
+                                (
+                                    in_array( $host, $hostRules )
+                                    || in_array( '*', $hostRules )
+                                )
+                                &&
+                                ( is_array( $hostRule ))
+                            )
                             {
-                                if( fnmatch( $pattern, $path ))
+                                /* Get current path */
+                                $path = implode( '/', $this -> url -> getPath());
+                                $path = empty( $path ) ? "/" : $path;
+                                foreach( $hostRule as $pattern => $rule )
                                 {
-                                    $result = is_array( $rule ) ? $rule : [];
-                                    break 3;
+                                    if( fnmatch( $pattern, $path ))
+                                    {
+                                        return is_array( $rule ) ? $rule : [];
+                                    }
                                 }
                             }
                         }
@@ -452,7 +494,7 @@ class Web extends Engine
                 }
             }
         }
-        return $result;
+        return null;
     }
 
 
@@ -665,7 +707,7 @@ class Web extends Engine
         string $aLabel
     )
     {
-        $this -> trace( 'b', $aLabel );
+        $this -> trace( '>', $aLabel );
         return $this;
     }
 
@@ -679,7 +721,7 @@ class Web extends Engine
         string $aLabel
     )
     {
-        $this -> trace( 'e', $aLabel );
+        $this -> trace( '<', $aLabel );
         return $this;
     }
 

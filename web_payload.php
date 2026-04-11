@@ -787,18 +787,13 @@ class WebPayload extends Hub
     )
     : string
     {
-        $best = '';
-        $bestScore = INF;
-        foreach( $aStats as $host => $stat )
-        {
-            $penalty = $stat[ 'penalty' ] ?? 0;
-            if( $penalty < $bestScore )
-            {
-                $bestScore = $penalty;
-                $best = $host;
-            }
-        }
-        return $best;
+        /* Сортируем по penalty (от меньшего к большему) */
+        uasort($aStats, fn($a, $b) => ($a['penalty'] ?? 0) - ($b['penalty'] ?? 0));
+        /* Индекс по квадратному корню от случайного числа */
+        $rand = lcg_value();
+        $index = (int)( sqrt($rand) * count( $aStats ));
+        /* Возвращаем ключ (host) по индексу */
+        return array_keys( $aStats )[ $index ];
     }
 
 
