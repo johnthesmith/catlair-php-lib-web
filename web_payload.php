@@ -579,6 +579,12 @@ class WebPayload extends Hub
     )
     :self
     {
+//
+//if($aPayloadMethod == 'subproc-work-a')
+//{
+//print_r(1);
+//}
+
         /* Чтение списка хостов */
         if( empty( $aHosts ))
         {
@@ -604,21 +610,10 @@ class WebPayload extends Hub
             -> parse( $host . '/' . $aPayloadName . '/'. $aPayloadMethod );
 
             /* Извлекаем время исполнения предельное из конфига */
-            $timeout =
-            $this -> getApp()
-            -> getParams()
-            [ 'web' ]
-            [ 'summon' ]
-            [ 'request-timeout-mls' ]
-            [ $aPayloadName ]
-            ??
+            $timeout = $this -> readSummonRequestTimeout
             (
-                $this -> getApp()
-                -> getParams()
-                [ 'web' ]
-                [ 'summon' ]
-                [ 'default-request-timeout-mls' ]
-            ) ?? 1000;
+                $aPayloadName . '/'. $aPayloadMethod
+            );
 
             $this -> startSummonStat( $host, $aPayloadName );
 
@@ -689,9 +684,31 @@ class WebPayload extends Hub
         Чтение количества попыток перенаправления
     */
     public function readMaxSummonTry()
+    :int
     {
-        return $this -> getApp() -> getParam([ 'web', 'summon', 'try' ], 2 );
+        return (int) $this -> getApp() -> getParams()
+        [ 'web' ][ 'summon' ][ 'try' ] ?? 2;
     }
+
+
+
+    /*
+        Возвращает время пределньго исполнения summon для payload
+    */
+    public function readSummonRequestTimeout
+    (
+        string $aPayloadName = '*'
+    )
+    :int
+    {
+        $cfg = $this -> getApp() -> getParams()
+        [ 'web' ]
+        [ 'summon' ]
+        [ 'request-timeout-mls' ] ?? [];
+
+        return $cfg[ $aPayloadName ] ?? ( $cfg[ '*' ] ?? 1000 );
+    }
+
 
 
 
