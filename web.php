@@ -69,6 +69,8 @@ class Web extends Engine
     private array           $outHeaders         = [];
     /* Trace enabled */
     private bool            $trace              = false;
+    /* Summon contract */
+    private array | null    $summonContract     = [];
 
 
     /*
@@ -133,8 +135,36 @@ class Web extends Engine
                 $this -> getParam([ 'web', 'cli', 'url' ])
             );
         }
-
         return $this;
+    }
+
+
+
+    /*
+        Convert string to summon contract
+    */
+    static public function parseSummonContract
+    (
+        /* Raw data with summon contract */
+        string $aString,
+        /* Default type content */
+        string $aDefaultTypeContent = 'text/plain'
+    )
+    :array | null
+    {
+        $result = json_decode( $aString, true );
+        if( is_array( $result ) && isset( $result[ 'meta' ]['source' ]))
+        {
+            if( empty( $result[ 'content-type' ] ))
+            {
+                $result[ 'content-type' ] = $aDefaultTypeContent;
+            }
+        }
+        else
+        {
+            $result = null;
+        }
+        return $result;
     }
 
 
@@ -146,15 +176,22 @@ class Web extends Engine
     public function onConfig()
     :self
     {
-        /* Read JSON from body request */
-        $input = file_get_contents( 'php://input' );
-        $jsonData = json_decode( $input, true );
+        $this -> summonContract = self::parseSummonContract
+        (
+            file_get_contents( 'php://input' ),
+            $_SERVER[ 'CONTENT_TYPE' ] ?? 'text/plain'
+        );
 
         return $this
         -> appendParams( $_GET )
         -> appendParams( $_POST )
         -> appendParams( $_COOKIE )
-        -> appendParams( $jsonData ?? [] );
+        -> appendParams
+        (
+            $this -> summonContract !== null
+            ? $this -> summonContract[ 'args' ] ?? []
+            : []
+        );
     }
 
 
@@ -175,20 +212,20 @@ class Web extends Engine
     public function onRun()
     :self
     {
-        /* First log event */
-        $this -> getLog() -> dump( $this -> getInHeaders(), 'headers' );
-
         /* Let inner headers */
         $this -> inHeaders = function_exists( 'getallheaders' )
         ? getallheaders()
         : [];
+
+        /* First log event */
+        $this -> getLog() -> dump( $this -> getInHeaders(), 'headers' );
 
         /* Let payload and method */
         $payloadName = null;
         $payloadMethod = null;
 
         /* Get IP rules */
-        $rule = $this -> getRule( $_SERVER[ 'REMOTE_ADDR' ] ?? '' );
+        $rule = $this -> getRule();
         if( empty( $rule ))
         {
             $this -> setResult
@@ -213,9 +250,6 @@ class Web extends Engine
             }
             else
             {
-                /* Dump rule in to log */
-                $this -> getLog() -> dump( $rule, 'rule' );
-
                 /* Apply rule uri */
                 $ruleUri = $rule[ 'uri' ] ?? null;
                 if( $ruleUri !== null )
@@ -237,7 +271,12 @@ class Web extends Engine
             }
         }
 
-        $this -> traceBegin( $_SERVER[ 'SERVER_ADDR' ] ?? '127.0.0.1' );
+        $this -> traceBegin
+        (
+            $_SERVER[ 'SERVER_ADDR' ] . ':' .
+            $_SERVER[ 'SERVER_PORT' ] .
+            $_SERVER[ 'REQUEST_URI' ]
+        );
 
         /* Open session */
         if( $this -> getParam([ 'web', 'session', 'enabled' ], true ))
@@ -272,10 +311,13 @@ class Web extends Engine
         /* Run payload */
         if( $payload -> isOk() && $payloadName !== null )
         {
-            $this -> traceBegin( $payloadMethod );
             /* Mutate and run web payload */
             $payload = $payload
             -> mutate( $payloadName, 'api' )
+            -> loadSummonState
+            (
+                file_get_contents( 'php://input' ),
+            )
             -> run
             (
                 $payloadMethod,
@@ -284,7 +326,6 @@ class Web extends Engine
         		: []
             )
             ;
-            $this -> traceEnd( $payloadMethod . ':' . $payload -> getCode());
         }
 
         /* Postprocessing payload */
@@ -378,7 +419,14 @@ class Web extends Engine
         }
 
         /* Final trace */
-        $this -> traceEnd( $_SERVER[ 'SERVER_ADDR' ] ?? '127.0.0.1' );
+        $this -> traceEnd
+        (
+            $_SERVER[ 'SERVER_ADDR' ] .
+            ':' .
+            $_SERVER[ 'SERVER_PORT' ] .
+            $_SERVER[ 'REQUEST_URI' ] .
+            '=' . $payload -> getCode()
+        );
 
         /* Move X-headers in to out headers */
         foreach( $this -> inHeaders as $name => $value )
@@ -424,68 +472,80 @@ class Web extends Engine
 
     /*
         Return eulw from config web.rules
-        {
-            "ip-masque, ... ":
-            {
-                "hostname":
-                {
-                    "path-masque": payloadыыр /method
-                    ...
-                },
-                ...
-            },
-            ...
-        }
-    */
-    private function getRule
-    (
-        /* Current ip */
-        string $aIp
-    )
+        "ip-masque-1, ... ":
+            "*|port-1, ..."
+                "*|host-1, ...":
+                    "path*": { rules }
+*/
+    private function getRule()
     :array | null
     {
+        /* Client ip */
+        $ip = $_SERVER[ 'REMOTE_ADDR' ];
+        /* Incoming port */
+        $port = $_SERVER[ 'SERVER_PORT' ];
+        /* Incoming host */
+        $host = $this -> getUrl() -> getHost();
+        /* Incoming path */
+        $path = implode( '/', $this -> url -> getPath());
+        $path = empty( $path ) ? "/" : $path;
+
+        $this
+        -> getLog()
+        -> trace( 'Looking for the rule for' )
+        -> param( 'ip', $ip )
+        -> param( 'port', $port )
+        -> param( 'host', $host )
+        -> param( 'path', $path )
+        -> lineEnd()
+        ;
+
         /* Get rules from config */
         $rules = $this -> getParams()[ 'web' ][ 'rules' ] ?? [];
         /* Get current host */
         $host = $this-> getUrl() -> getHost();
 
         /* Loop for ip masque */
-        foreach( $rules as $masque => $item )
+        foreach( $rules as $maskKey => $portsKeys )
         {
-            $masks = array_map( 'trim', explode(',', $masque ));
-            foreach( $masks as $mask )
+            if( is_array( $portsKeys ))
             {
-                /* Check ip by range */
-                if( ip4Range( $aIp, $mask ))
+                /* List of masks in key */
+                $masks = array_map( 'trim', explode(',', $maskKey ));
+                foreach( $masks as $mask )
                 {
-                    if( is_array( $item ))
+                    /* Check ip by range */
+                    if( ip4Range( $ip, $mask ))
                     {
-                        /* Loop for hosts */
-                        foreach( $item as $hostRulesStr => $hostRule )
+                        /* Loop for ports */
+                        foreach( $portsKeys as $portsKey => $hostsKeys )
                         {
-                            $hostRules = array_map
-                            (
-                                'trim',
-                                explode(',', $hostRulesStr)
-                            );
-                            if
-                            (
-                                (
-                                    in_array( $host, $hostRules )
-                                    || in_array( '*', $hostRules )
-                                )
-                                &&
-                                ( is_array( $hostRule ))
-                            )
+                            if( is_array( $hostsKeys ))
                             {
-                                /* Get current path */
-                                $path = implode( '/', $this -> url -> getPath());
-                                $path = empty( $path ) ? "/" : $path;
-                                foreach( $hostRule as $pattern => $rule )
+                                $ports = array_map( 'trim', explode( ',', $portsKey ));
+                                if( in_array( $port, $ports ) || in_array( '*', $ports ))
                                 {
-                                    if( fnmatch( $pattern, $path ))
+                                    foreach( $hostsKeys as $hostsKey => $urisKeys )
                                     {
-                                        return is_array( $rule ) ? $rule : [];
+                                        if( is_array( $urisKeys ))
+                                        {
+                                            $hosts = array_map( 'trim', explode( ',', $hostsKey ));
+                                            if( in_array( $host, $hosts ) || in_array( '*', $hosts ))
+                                            {
+                                                foreach( $urisKeys as $uriKey => $rule)
+                                                {
+                                                    if( fnmatch( $uriKey, $path ) )
+                                                    {
+                                                        /* Dump rule in to log */
+                                                        $this
+                                                        -> getLog()
+                                                        -> dump( $rule, 'Result rule' )
+                                                        -> lineEnd();
+                                                        return is_array( $rule ) ? $rule : null;
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -642,6 +702,21 @@ class Web extends Engine
 
 
     /*
+        Set out headers key => value
+    */
+    public function setOutHeaders
+    (
+        array $a
+    )
+    :self
+    {
+        $this -> outHeaders = $a;
+        return $this;
+    }
+
+
+
+    /*
         Return income http header value by key
     */
     public function getOutHeader
@@ -758,9 +833,9 @@ class Web extends Engine
                 'X-Trace',
                 ( empty( $trace ) ? '' : $trace . '; ' )
                 . $aEvent
-                . ':'
+                . '|'
                 . $aLabel
-                . ':'
+                . '|'
                 . ( $now - $start )
             );
         }

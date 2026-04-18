@@ -175,6 +175,33 @@ class WebPayload extends Hub
 
 
 
+    public function paramsToContent
+    (
+        string $aType = 'json'
+    )
+    {
+        switch( $aType )
+        {
+            case 'json':
+                $this
+                -> setContentType( MIME::JSON )
+                -> setContent
+                (
+                    json_encode
+                    (
+                        $this -> getParams(),
+                        JSON_UNESCAPED_UNICODE |
+                        JSON_UNESCAPED_SLASHES |
+                        JSON_INVALID_UTF8_IGNORE |
+                        JSON_PRETTY_PRINT
+                    )
+                );
+            break;
+        }
+        return $this;
+    }
+
+
     /**************************************************************************
         Utils
     */
@@ -215,6 +242,7 @@ class WebPayload extends Hub
         }
         return $result;
     }
+
 
 
 
@@ -292,7 +320,7 @@ class WebPayload extends Hub
     */
     public function getContentType()
     {
-        return $this -> contentType;
+        return empty($this -> contentType) ? MIME::TXT : $this -> contentType;
     }
 
 
@@ -557,14 +585,144 @@ class WebPayload extends Hub
 
 
 
+    /*
+        Proxy request to another host
+    */
+    protected function proxy
+    (
+        /* Url  protocol://host:port */
+        string $aUrl
+    )
+    : self
+    {
+        $this
+        -> getLog()
+        -> begin( 'proxy' )
+        -> param( 'url', $aUrl )
+        ;
+
+        /* Создаем webbot */
+        $bot = WebBot::create( $this -> getLog() )
+        -> setRequestHeaders( $this -> getApp() -> getInHeaders() )
+        -> setMethod( $_SERVER[ 'REQUEST_METHOD' ])
+        -> setConnectTimeoutMls( 1000 )
+        -> setRequestTimeoutMls( 1000 )
+        -> setBody( file_get_contents( 'php://input' ))
+        ;
+
+        /* Создаём URL из переданного хоста */
+        $bot
+        -> getUrl()
+        -> parse( $aUrl )
+        -> setPath( $this -> getApp() -> getUrl() -> getPath() )
+        -> setParams( $this -> getApp() -> getUrl() -> getParams() );
+
+        $bot
+        -> execute()
+        -> resultTo( $this );
+        if( $this -> isOk())
+        {
+            $this -> getApp() -> applyHeaders( $bot -> getResponseHeaders());
+            $this -> setContent( $bot -> getContent());
+            $this -> setContentType( $bot -> getResponseContentType());
+        }
+
+        $this -> getLog() -> end();
+
+        return $this;
+    }
+
+
+
     /**************************************************************************
         Механизм и вспомогательные интерфейся summon
         Вызов удаленных полезных нагрузок
     */
 
+
+
+    /*
+        Запаковывает текщее состояние пэйлода в summon contract
+        meta.source - обязательное поля для контракта
+    */
+    public function toSummonContract
+    (
+        /* Перечень прикладных аргументов */
+        array $aArgs = []
+    )
+    :array
+    {
+        return
+        [
+                    /* Метаинформация контракта */
+            'meta' =>
+            [
+                /* Обязательный источник отправки контракта */
+                'source' => get_class( $this )
+            ],
+            /* Результат контракта */
+            'result' => $this -> getResultAsArray(),
+            /* Контент */
+            'content' => $this -> getContent(),
+            /* Тип контента */
+            'content-type' => $this -> getContentType(),
+            /* Структура параметров состояний */
+            'params' => $this -> getParams(),
+            /* Аргументы к текущему вызвову контракта */
+            'args' => $aArgs
+        ];
+    }
+
+
+
+    /*
+        Восстанавливает состояние пэйлода из summon contract
+    */
+    public function fromSummonContract
+    (
+        array $aContract
+    ) :self
+    {
+        $this -> setContent( $aContract[ 'content' ] ?? '' );
+        $this -> setContentType( $aContract[ 'content-type' ] ?? '' );
+        $this -> setResultFromArray( $aContract[ 'result' ] ?? [] );
+        $this -> setParams( $aContract[ 'params' ] ?? [] );
+        return $this;
+    }
+
+
+
+    /*
+        Расппковывает текств в текущее состояние
+    */
+    public function loadSummonState
+    (
+        /* Тушка ответа */
+        string $aData,
+        /* Тип контента при отсутсвии в json */
+        string $aDefaultContentType = 'text/plain'
+    )
+    :self
+    {
+        $contract = Web::parseSummonContract( $aData, $aDefaultContentType );
+        if( $contract !== null )
+        {
+            $this -> fromSummonContract( $contract );
+        }
+        else
+        {
+            $this -> setContent( $aData );
+            $this -> setContentType( $aDefaultContentType );
+        }
+
+        return $this;
+    }
+
+
+
     /*
         Запуск метода удаленной полезной нагрузки через REST
-        c использованием прямой ссылки и таймаута исполднения запроса
+        Выполнение изменит result и content текущего объекта
     */
     public function summon
     (
@@ -579,112 +737,143 @@ class WebPayload extends Hub
     )
     :self
     {
-//
-//if($aPayloadMethod == 'subproc-work-a')
-//{
-//print_r(1);
-//}
+        $this
+        -> getLog()
+        -> begin( 'summon' )
+        -> param( 'payload', $aPayloadName )
+        -> param( 'method', $aPayloadMethod )
+        ;
 
-        /* Чтение списка хостов */
-        if( empty( $aHosts ))
+        /* Определение маршрута локального */
+        $route
+        = $this -> readSummonPreferLocal()
+        ? $this -> getApp() -> getRoute( $aPayloadName )
+        : false;
+
+        if( empty( $route ))
         {
-            $aHosts = $this -> readSummonHosts();
-        }
-
-        /* Сборка статистики по хостам */
-        $stats = $this -> selectSummonStats( $aHosts, $aPayloadName );
-
-        /* Чтение количества попыток перенаправления */
-        $maxTries = $this -> readMaxSummonTry();
-
-        /* Цикл попыток исполнения */
-        $attempt = 0;
-        while( $attempt < $maxTries )
-        {
-            $attempt++;
-            /* Получение worker */
-            $host = $this -> selectSummonHost( $stats );
-
-            /* Формирование ссылки */
-            $url = URL::Create()
-            -> parse( $host . '/' . $aPayloadName . '/'. $aPayloadMethod );
-
-            /* Извлекаем время исполнения предельное из конфига */
-            $timeout = $this -> readSummonRequestTimeout
-            (
-                $aPayloadName . '/'. $aPayloadMethod
-            );
-
-            $this -> startSummonStat( $host, $aPayloadName );
-
-            $this -> getLog()
-            -> begin( 'summon' )
-            -> param( 'host', $host )
-            -> param( 'payload', $aPayloadName )
-            -> param( 'method', $aPayloadMethod )
-            ;
-
-            /* Исполнение запроса */
-            $bot = WebBot::create( $this -> getLog() )
-            -> setRequestTimeoutMls( $timeout )
-            -> setUrl( $url )
-            -> setPostParams( $aArguments )
-            -> setHeaders( $this -> getApp() -> getInHeaders())
-            -> execute()
-            -> resultTo( $this );
-
-            /* Return headers */
-            $this -> getApp() -> applyHeaders( $bot -> getHeaders() );
-
-            /* */
-            $this -> getLog() -> end();
-            $this -> stopSummonStat( $host, $aPayloadName, $this -> getCode() );
-
-            /* Теперь проверяем состояние ТЕКУЩЕГО payload */
-            if( $this -> isOk())
+            /* Чтение списка хостов */
+            if( empty( $aHosts ))
             {
-                $answer = $bot -> getAnswer();
-                $contentType = $bot -> getContentType();
-                $this -> setContentType( $contentType );
+                $aHosts = $this -> readSummonHosts();
+            }
 
-                if( $contentType === 'application/json' )
+            /* Сборка статистики по хостам */
+            $stats = $this -> selectSummonStats( $aHosts, $aPayloadName );
+
+            /* Чтение количества попыток перенаправления */
+            $maxTries = $this -> readMaxSummonTry();
+
+            /* Цикл попыток исполнения */
+            $attempt = 0;
+            while( $attempt < $maxTries )
+            {
+                $attempt++;
+                /* Получение worker */
+                $host = $this -> selectSummonHost( $stats );
+
+                $this
+                -> getLog()
+                -> trace()
+                -> param( 'attempt', $attempt )
+                -> param( 'from', $maxTries )
+                -> param( 'host', $host )
+                ;
+
+                /* Формирование тушки из контракта */
+                $body = json_encode
+                (
+                    $this -> toSummonContract( $aArguments ),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                );
+
+                /* Формирование ссылки */
+                $url = URL::Create()
+                -> parse( $host . '/' . $aPayloadName . '/'. $aPayloadMethod );
+
+                /* Извлекаем время исполнения предельное из конфига */
+                $requestTimeout = $this -> readSummonRequestTimeout
+                (
+                    $aPayloadName,
+                    $aPayloadMethod
+                );
+
+                /* Извлекаем время исполнения предельное из конфига */
+                $connectTimeout = $this -> readSummonConnectTimeout
+                (
+                    $aPayloadName,
+                    $aPayloadMethod
+                );
+
+                $this -> startSummonStat( $host, $aPayloadName );
+
+                /* Исполнение запроса */
+                $bot = WebBot::create( $this -> getLog() )
+                -> setRequestTimeoutMls( $requestTimeout )
+                -> setConnectTimeoutMls( $connectTimeout )
+                -> setUrl( $url )
+                -> setBody( $body )
+                -> setMethod( 'POST' )
+                -> setRequestHeaders( $this -> getApp() -> getInHeaders())
+                -> execute()
+                -> resultTo( $this );
+
+
+                /* Проверяем состояние */
+                if( $this -> isOk())
                 {
-                    $data = json_decode( $answer, true );
-                    if( is_array( $data ))
-                    {
-                        if( isset( $data[ 0 ][ 'code'] ))
-                        {
-                            $this -> setResultFromArray( $data );
-                        }
-                        else
-                        {
-                            $this -> setContent( $answer );
-                        }
-                    }
-                    else
-                    {
-                        $this -> setContent( $answer );
-                    }
-                }
-                else
-                {
-                    $this -> setContent( $answer );
+                    $this -> getApp() -> applyHeaders( $bot -> getResponseHeaders());
+                    $this -> loadSummonState
+                    (
+                        $bot -> getContent(),
+                        $bot -> getResponseContentType()
+                    );
+                    /* Завершение цикла */
+                    $attempt = $maxTries;
                 }
 
-                /* Завершение цикла */
-                $attempt = $maxTries;
+                $this -> stopSummonStat( $host, $aPayloadName, $this -> getCode() );
             }
         }
+        else
+        {
+            /* Локальыне вызовы */
+            $this
+            -> mutate( $aPayloadName )
+            -> setContent( '' )
+            -> call( $aPayloadMethod, $aArguments )
+            -> unmutate();
+        }
 
+        $this -> getLog() -> end();
         return $this;
     }
+
+
+    /*
+        Выполняет вызов без передачи состояний текущего payload
+        возвращается новый пэйлоад без состояний
+    */
+    public function invoke
+    (
+        string $aPayload,
+        string $aMethod,
+        array $aArgs = []
+    )
+    :self
+    {
+        return $this
+        -> spawn()
+        -> summon( $aPayload, $aMethod, $aArgs );
+    }
+
 
 
     /*
         Чтение количества попыток перенаправления
     */
     public function readMaxSummonTry()
-    :int
+    : int
     {
         return (int) $this -> getApp() -> getParams()
         [ 'web' ][ 'summon' ][ 'try' ] ?? 2;
@@ -697,7 +886,8 @@ class WebPayload extends Hub
     */
     public function readSummonRequestTimeout
     (
-        string $aPayloadName = '*'
+        string $aPayload,
+        string $aMethod
     )
     :int
     {
@@ -706,9 +896,49 @@ class WebPayload extends Hub
         [ 'summon' ]
         [ 'request-timeout-mls' ] ?? [];
 
-        return $cfg[ $aPayloadName ] ?? ( $cfg[ '*' ] ?? 1000 );
+        if( !is_array( $cfg ))
+        {
+            return 1000;
+        }
+        else
+        {
+            return $cfg[ $aPayload . '/' . $aMethod ]
+            ?? $cfg[ $aPayload ]
+            ?? $cfg[ '*' ]
+            ?? 1000;
+        }
     }
 
+
+
+
+    /*
+        Возвращает время на подключение исполнения summon для payload
+    */
+    public function readSummonConnectTimeout
+    (
+        string $aPayload,
+        string $aMethod
+    )
+    :int
+    {
+        $cfg = $this -> getApp() -> getParams()
+        [ 'web' ]
+        [ 'summon' ]
+        [ 'connect-timeout-mls' ] ?? [];
+
+        if( !is_array( $cfg ))
+        {
+            return 1000;
+        }
+        else
+        {
+            return $cfg[ $aPayload . '/' . $aMethod ]
+            ?? $cfg[ $aPayload ]
+            ?? $cfg[ '*' ]
+            ?? 1000;
+        }
+    }
 
 
 
@@ -717,9 +947,24 @@ class WebPayload extends Hub
         при summon и диспетчеризации
     */
     public function readSummonHosts()
+    :array
+    {
+        $result = $this -> getApp()
+        -> getParams()[ 'web' ][ 'summon' ][ 'hosts' ] ?? [];
+        return is_array( $result ) ? $result : [];
+    }
+
+
+
+    /*
+        Возваращает флаг предпочтения локальныого исполнения
+        в случае если необходимый payload в наличии
+    */
+    public function readSummonPreferLocal()
+    :bool
     {
         return $this -> getApp()
-        -> getParams()[ 'web' ][ 'summon' ][ 'hosts' ] ?? [];
+        -> getParams()[ 'web' ][ 'summon' ][ 'prefer-local' ] ?? false;
     }
 
 
