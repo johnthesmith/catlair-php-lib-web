@@ -338,6 +338,18 @@ class Web extends Engine
         /* Return buffer output and clear it */
         $rawOutput = ob_get_clean();
 
+        /* Set error if payload is not web */
+        if( !is_subclass_of( $payload, '\catlair\WebPayload' ))
+        {
+            $this -> setResult
+            (
+                'payload-is-not-web',
+                [
+                    'payload-class' => get_class( $payload )
+                ]
+            );
+        }
+
         /* Check raw empty */
         if( strlen( $rawOutput ) > 0 )
         {
@@ -347,25 +359,20 @@ class Web extends Engine
         }
         else
         {
-            if
-            (
-                $payload -> isOk()
-                && ( is_subclass_of( $payload, '\catlair\WebPayload' ))
-            )
+            if( $payload -> isOk())
             {
                 /* Get content from payload */
                 $content = $payload -> getContent();
+                if( empty( $content ))
+                {
+                    $content = $payload -> getParams();
+                }
                 /* Get content type from payload*/
                 $contentType = $payload -> getContentType();
                 /* Get content type from payload*/
                 $contentFileName = $payload -> getContentFileName();
             }
             else
-            {
-                $this -> setResult( 'payload-is-not-web' );
-            }
-
-            if( !$payload -> isOk() )
             {
                 /* Return error */
                 $content = $payload -> getResultHistory();
@@ -377,6 +384,7 @@ class Web extends Engine
         {
             switch( $contentType )
             {
+                default:
                 case Mime::JSON:
                     $content = json_encode
                     (
@@ -460,8 +468,6 @@ class Web extends Engine
 
         return $this;
     }
-
-
 
 
 
