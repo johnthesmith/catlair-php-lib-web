@@ -232,7 +232,10 @@ class Web extends Engine
             (
                 'web-rule-not-found',
                 [
-                    'msg' => 'check web.rules config'
+                    'msg' => 'check web.rules config',
+                    'ip' => $_SERVER[ 'REMOTE_ADDR' ] ,
+                    'port' => $_SERVER[ 'SERVER_PORT' ],
+                    'host' => $this -> getUrl() -> getHost()
                 ]
             );
         }
